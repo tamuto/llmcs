@@ -1,0 +1,26 @@
+# ホスト側は 127.0.0.1 にだけ公開する。別のマシンから使うときは SSH トンネルを通す。
+services:
+  embedding-server:
+    build:
+      context: .
+      args:
+        TORCH_INDEX: ${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
+        TORCH_VERSION: ${TORCH_VERSION:-2.14.1+cpu}
+    image: minamo-embedding-server:local
+    environment:
+      # 読み込むモデル (models.json の name)。空なら全部。
+      MODELS: ${MODELS:-}
+    ports:
+      - "127.0.0.1:${PORT:-8081}:8080"
+    volumes:
+      - models:/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      # 初回はモデルの取得 (合わせて約3.5GB) を待つ。
+      start_period: 15m
+
+volumes:
+  models:

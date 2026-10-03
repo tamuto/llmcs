@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 接続先の情報 (llama-server を別のマシンで動かすとき)
+remote.json

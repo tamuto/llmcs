@@ -1,0 +1,5 @@
+.git
+models
+*.gguf
+*.safetensors
+*.bin
