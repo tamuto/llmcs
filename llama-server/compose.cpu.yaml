@@ -1,0 +1,32 @@
+# GPU の無い x86_64 の PC で、llama-server を2つ動かす。抽出などに使う LLM と、文をベクトルにする埋め込み。
+# どちらも OpenAI と同じ形 (/v1/chat/completions、/v1/embeddings) で呼べる。
+# イメージは llama.cpp 公式の CPU 版をダイジェストで固定する。ホスト側は 127.0.0.1 にだけ公開する。
+#
+# モデルは名前付きボリューム llmcs_llama_models に置く (取り方は README)。
+# 2026-10-03 に Qwen3.5-4B (Q4_K_M) を 8 コアの CPU で動かしたところ、
+# 読むのが毎秒約38〜55トークン、書くのが毎秒約10〜15トークンだった。
+services:
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp@sha256:970168341efef973da5666ea5c362fa428ee66ba0dfa621b0f69bf3feb3320f7
+    command: >-
+      -m /models/qwen3.5-4b-q4_k_m.gguf --alias qwen3.5-4b
+      -c 16384 -np 1 -t 6 --jinja --reasoning off
+      --host 0.0.0.0 --port 8080
+    ports:
+      - "127.0.0.1:${LLM_PORT:-8090}:8080"
+    volumes:
+      - models:/models:ro
+  embed:
+    image: ghcr.io/ggml-org/llama.cpp@sha256:970168341efef973da5666ea5c362fa428ee66ba0dfa621b0f69bf3feb3320f7
+    command: >-
+      -m /models/bge-m3-q8_0.gguf --alias bge-m3 --embedding --pooling cls
+      -c 8192 -ub 8192 -t 2 --host 0.0.0.0 --port 8080
+    ports:
+      - "127.0.0.1:${EMBED_PORT:-8091}:8080"
+    volumes:
+      - models:/models:ro
+
+volumes:
+  models:
+    external: true
+    name: llmcs_llama_models

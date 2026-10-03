@@ -1,0 +1,19 @@
+{
+  "purpose": "サーバが読み込むモデル。revision は Hugging Face のコミットに固定する。違うモデルや違う版で作ったベクトル同士は比べられないので、版を上げるときは作り直す前提で上げる",
+  "models": [
+    {
+      "name": "ruri-v3-310m",
+      "repo": "cl-nagoya/ruri-v3-310m",
+      "revision": "18b60fb8c2b9df296fb4212bb7d23ef94e579cd3",
+      "license": "apache-2.0",
+      "note": "日本語向け。用途に応じて入力の先頭に「トピック: 」「検索クエリ: 」「検索文書: 」を付ける (付けるのは呼ぶ側)"
+    },
+    {
+      "name": "bge-m3",
+      "repo": "BAAI/bge-m3",
+      "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+      "license": "mit",
+      "note": "多言語。英語と日本語をまたいで比べられる"
+    }
+  ]
+}

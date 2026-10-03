@@ -1,0 +1,23 @@
+services:
+  llama-server:
+    build:
+      context: .
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-allbase:l4t-r36.3.0-cmake}
+        LLAMA_CPP_REF: ${LLAMA_CPP_REF:-b10831}
+        CUDA_ARCH: ${CUDA_ARCH:-87}
+    image: kumu-llama-server:${LLAMA_CPP_REF:-b10831}
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      MODEL_FILE: ${MODEL_FILE:-/models/model.gguf}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8080}
+      ALIAS: ${ALIAS:-kumu-reader}
+      CTX_SIZE: ${CTX_SIZE:-8192}
+      PARALLEL: ${PARALLEL:-1}
+      GPU_LAYERS: ${GPU_LAYERS:-999}
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+    volumes:
+      - ${MODEL_DIR:-./models}:/models:ro
