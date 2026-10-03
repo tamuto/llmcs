@@ -73,3 +73,15 @@ def test_Dockerの作成日時を読む():
     )
     assert parse_created("2026-10-03T08:26:51Z") == datetime(2026, 10, 3, 8, 26, 51, tzinfo=UTC)
     assert parse_created("") is None
+
+
+def test_スレッドを立て直したらトークンの累計を数え直す(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "log.jsonl"))
+    with WorkspaceSession(FAKE) as session:
+        session.start_thread()
+        session.run_turn("1件目")
+        session.run_turn("2件目")
+        session.start_thread()
+        third = session.run_turn("3件目")
+    # 新しいスレッドの1件目は、そのスレッドの累計そのもの (前のスレッドの累計と差を取らない)。
+    assert third.usage == {"totalTokens": 1234}

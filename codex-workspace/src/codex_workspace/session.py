@@ -203,6 +203,8 @@ class WorkspaceSession:
             params["developerInstructions"] = developer_instructions
         result = self._request("thread/start", params)
         self.thread_id = result["thread"]["id"]
+        # トークンの累計はスレッドごとに数え直される。前のスレッドの累計と差を取らない。
+        self._total = {}
         self.model = result.get("model")
         return self.thread_id
 

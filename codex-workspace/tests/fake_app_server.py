@@ -17,7 +17,7 @@ def notify(method, params):
     send({"jsonrpc": "2.0", "method": method, "params": params})
 
 
-def run_turn(turn):
+def run_turn(turn, in_thread):
     notify("turn/started", {"turn": {"id": turn}})
     if os.environ.get("FAKE_SCENARIO") == "fail":
         notify(
@@ -39,7 +39,8 @@ def run_turn(turn):
     }
     notify("item/completed", {"item": change})
     notify("item/completed", {"item": {"type": "agentMessage", "id": "m1", "text": "書きました"}})
-    used = 1000 * int(turn.removeprefix("u"))
+    # 累計はスレッドごとに数え直す (本物の app-server と同じ)。
+    used = 1000 * in_thread
     notify(
         "thread/tokenUsage/updated",
         {"tokenUsage": {"last": {"totalTokens": 1}, "total": {"totalTokens": used + 200}}},
@@ -54,6 +55,7 @@ def run_turn(turn):
 def main():
     log = open(os.environ["FAKE_LOG"], "a")  # noqa: SIM115
     turns = 0
+    in_thread = 0
     for line in sys.stdin:
         message = json.loads(line)
         log.write(json.dumps(message) + "\n")
@@ -62,6 +64,7 @@ def main():
             continue
         method = message["method"]
         if method == "thread/start":
+            in_thread = 0
             send(
                 {
                     "jsonrpc": "2.0",
@@ -71,8 +74,9 @@ def main():
             )
         elif method == "turn/start":
             turns += 1
+            in_thread += 1
             send({"jsonrpc": "2.0", "id": message["id"], "result": {"turn": {"id": f"u{turns}"}}})
-            run_turn(f"u{turns}")
+            run_turn(f"u{turns}", in_thread)
         else:
             send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
 
