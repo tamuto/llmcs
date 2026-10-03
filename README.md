@@ -5,10 +5,22 @@ LLM に関するクライアントとサーバをまとめるプロジェクト�
 | ディレクトリ | 内容 | 実行環境 |
 | --- | --- | --- |
 | `embedding-server/` | 文をベクトルにする HTTP サーバ（sentence-transformers、OpenAI 互換の `/v1/embeddings`） | Docker |
+| `codex-app-server-client/` | `codex app-server` を stdio の JSON-RPC で呼ぶ Python クライアント | Python 3.11 以上 |
 | `llama-server/` | llama.cpp の OpenAI 互換サーバ。Jetson 用（`compose.yaml`）と CPU 用（`compose.cpu.yaml`） | Docker |
+
+Python のパッケージは、利用する側から uv の git 依存（`subdirectory` とタグ）で参照します。
+タグはパッケージ名を頭に付けます（例: `codex-app-server-client-v0.2.0`）。
 
 どのサーバも OpenAI と同じ形で呼べるようにし、呼ぶ側は URL とモデル名だけを知っていればよいように
 します。ホスト側は `127.0.0.1` にだけ公開します。
+
+## codex-app-server-client を検証する
+
+```bash
+cd codex-app-server-client
+uv run pytest -q
+uv run ruff check .
+```
 
 ## 文をベクトルにする（embedding-server）
 
