@@ -5,6 +5,7 @@ LLM に関するクライアントとサーバをまとめるプロジェクト�
 | ディレクトリ | 内容 | 実行環境 |
 | --- | --- | --- |
 | `embedding-server/` | 文をベクトルにする HTTP サーバ（sentence-transformers、OpenAI 互換の `/v1/embeddings`） | Docker |
+| `codex-workspace/` | `codex app-server` を、作業場所だけをマウントしたコンテナで動かし、ファイルを書かせる部品 | Docker、Python 3.11 以上 |
 | `codex-app-server-client/` | `codex app-server` を stdio の JSON-RPC で呼ぶ Python クライアント | Python 3.11 以上 |
 | `llama-server/` | llama.cpp の OpenAI 互換サーバ。Jetson 用（`compose.yaml`）と CPU 用（`compose.cpu.yaml`） | Docker |
 
@@ -18,6 +19,31 @@ Python のパッケージは、利用する側から uv の git 依存（`subdir
 
 ```bash
 cd codex-app-server-client
+uv run pytest -q
+uv run ruff check .
+```
+
+## Codex に作業場所を渡してファイルを書かせる（codex-workspace）
+
+Codex 自身の囲い（bubblewrap）は、ユーザ名前空間を作れないコンテナの中では働かず、書き込みが全部
+拒否されます。そこで、作業場所だけをマウントしたコンテナを囲いにして、その中では囲いなしで動かします。
+作業場所のパスは、Docker のデーモンから見た場所（ホストの場所）で渡します。
+
+```python
+from codex_workspace import WorkspaceSession, docker_command, ensure_image
+
+ensure_image()  # 無いか1日より古ければ作り直す (最新の Codex を入れる)
+command = docker_command("/mnt/usb/assets/kotonoha/graph", auth_volume="denv-cc-remote_codex-state")
+with WorkspaceSession(command, model="gpt-6.1-sol", effort="medium") as session:
+    session.start_thread("作業の決まり (developer instructions)")
+    result = session.run_turn("inbox/a.md を取り込んでください")
+    print(result.changed, result.usage)   # 書き換えたファイルと、使ったトークン
+    session.run_turn("次の誤りを直してください …")   # 同じスレッドに続けて頼む
+```
+
+```bash
+cd codex-workspace
+docker build -t llmcs-codex-workspace:local src/codex_workspace   # 手で作り直すとき
 uv run pytest -q
 uv run ruff check .
 ```
