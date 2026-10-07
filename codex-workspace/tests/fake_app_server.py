@@ -19,10 +19,14 @@ def notify(method, params):
 
 def run_turn(turn, in_thread):
     notify("turn/started", {"turn": {"id": turn}})
-    if os.environ.get("FAKE_SCENARIO") == "fail":
-        notify(
-            "turn/completed", {"turn": {"id": turn, "status": "failed", "error": {"message": "x"}}}
-        )
+    if os.environ.get("FAKE_SCENARIO") in ("fail", "usage"):
+        error = {"message": "x"}
+        if os.environ.get("FAKE_SCENARIO") == "usage":
+            error = {
+                "message": "You've hit your usage limit",
+                "codexErrorInfo": "usageLimitExceeded",
+            }
+        notify("turn/completed", {"turn": {"id": turn, "status": "failed", "error": error}})
         return
     # 承認は求めない設定でも、要求が来たら断られることを確かめる。
     send({"jsonrpc": "2.0", "id": 900, "method": "item/fileChange/requestApproval", "params": {}})
@@ -77,6 +81,15 @@ def main():
             in_thread += 1
             send({"jsonrpc": "2.0", "id": message["id"], "result": {"turn": {"id": f"u{turns}"}}})
             run_turn(f"u{turns}", in_thread)
+        elif method == "account/rateLimits/read":
+            five_hour, weekly = (int(v) for v in os.environ.get("FAKE_USAGE", "8,1").split(","))
+            limits = {
+                "primary": {"usedPercent": five_hour, "windowDurationMins": 300},
+                "secondary": {"usedPercent": weekly, "windowDurationMins": 10080},
+                "rateLimitReachedType": None,
+            }
+            result = {"rateLimits": limits, "ordinaryUsageAllowed": True}
+            send({"jsonrpc": "2.0", "id": message["id"], "result": result})
         else:
             send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
 

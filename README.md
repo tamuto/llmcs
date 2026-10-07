@@ -41,6 +41,15 @@ with WorkspaceSession(command, model="gpt-6.1-sol", effort="medium") as session:
     session.run_turn("次の誤りを直してください …")   # 同じスレッドに続けて頼む
 ```
 
+アカウントの使用量は `session.usage()` で読めます（`account/rateLimits/read`）。続けて頼む処理では、頼む前に
+見て、上限に近ければ頼まないようにします。上限に当たって失敗したターンは `UsageLimitError`
+（`WorkspaceError` の一種）になるので、そこで続けるのをやめます。
+
+```python
+usage = session.usage()
+usage.used(300), usage.used(10080)   # 5時間の窓と週の窓の、使った割合 (%)
+```
+
 ```bash
 cd codex-workspace
 docker build -t llmcs-codex-workspace:local src/codex_workspace   # 手で作り直すとき
