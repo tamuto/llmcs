@@ -6,11 +6,13 @@ LLM に関するクライアントとサーバをまとめるプロジェクト�
 | --- | --- | --- |
 | `embedding-server/` | 文をベクトルにする HTTP サーバ（sentence-transformers、OpenAI 互換の `/v1/embeddings`） | Docker |
 | `codex-workspace/` | `codex app-server` を、作業場所だけをマウントしたコンテナで動かし、ファイルを書かせる部品 | Docker、Python 3.11 以上 |
+| `codex-workspace-ts/` | `codex-workspace` の TypeScript 版（同じイメージを共有） | Docker、Node 22 以上 |
 | `codex-app-server-client/` | `codex app-server` を stdio の JSON-RPC で呼ぶ Python クライアント | Python 3.11 以上 |
 | `llama-server/` | llama.cpp の OpenAI 互換サーバ。Jetson 用（`compose.yaml`）と CPU 用（`compose.cpu.yaml`） | Docker |
 
 Python のパッケージは、利用する側から uv の git 依存（`subdirectory` とタグ）で参照します。
 タグはパッケージ名を頭に付けます（例: `codex-app-server-client-v0.2.0`）。
+TypeScript のパッケージは pnpm の git 依存（`#<タグ>&path:/<ディレクトリ>`）で参照します。
 
 どのサーバも OpenAI と同じ形で呼べるようにし、呼ぶ側は URL とモデル名だけを知っていればよいように
 します。ホスト側は `127.0.0.1` にだけ公開します。
@@ -55,6 +57,26 @@ cd codex-workspace
 docker build -t llmcs-codex-workspace:local src/codex_workspace   # 手で作り直すとき
 uv run pytest -q
 uv run ruff check .
+```
+
+TypeScript 版（`codex-workspace-ts/`）も同じ使い方です。
+
+```ts
+import { WorkspaceSession, dockerCommand, ensureImage } from "@llmcs/codex-workspace";
+
+await ensureImage();
+await using session = await WorkspaceSession.open(
+  dockerCommand("/mnt/usb/assets/kotonoha/graph", { authVolume: "denv-cc-remote_codex-state" }),
+  { model: "gpt-6.1-sol", effort: "medium" },
+);
+await session.startThread("作業の決まり (developer instructions)");
+const result = await session.runTurn("inbox/a.md を取り込んでください");
+```
+
+```bash
+cd codex-workspace-ts
+pnpm install
+pnpm check   # 型検査・テスト・ビルド (dist/ はコミットする)
 ```
 
 ## 文をベクトルにする（embedding-server）
