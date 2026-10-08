@@ -1,0 +1,3 @@
+node_modules/
+# git 依存で使えるよう、ビルド結果はコミットする (README 参照)
+!dist/

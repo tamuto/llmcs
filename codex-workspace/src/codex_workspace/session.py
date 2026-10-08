@@ -36,6 +36,55 @@ class WorkspaceError(RuntimeError):
     pass
 
 
+class UsageLimitError(WorkspaceError):
+    """Codex の使用量の上限 (5時間や週の窓) に当たって、ターンが失敗した。
+
+    待てば戻るが、すぐに頼み直しても同じように失敗する。呼び出し側は、続けて頼むのをやめる。
+    """
+
+
+# codexErrorInfo のうち、使用量の上限に当たったもの。
+USAGE_LIMIT_ERRORS = frozenset({"usageLimitExceeded", "rateLimitExceeded"})
+
+
+def _is_usage_limit(error: object) -> bool:
+    info = error.get("codexErrorInfo") if isinstance(error, dict) else None
+    if isinstance(info, str):
+        return info in USAGE_LIMIT_ERRORS
+    return isinstance(info, dict) and any(key in USAGE_LIMIT_ERRORS for key in info)
+
+
+@dataclass
+class Usage:
+    """アカウントの使用量 (account/rateLimits/read)。
+
+    windows は、窓の長さ (分) から、使った割合 (%) への対応。ChatGPT のプランでは、
+    5時間 (300分) と週 (10080分) の2つ。allowed は、ふつうに使ってよいかの、
+    サーバー側の判断 (分からなければ None)。reached は、上限に当たっていればその種類。
+    """
+
+    windows: dict[int, int]
+    allowed: bool | None
+    reached: str | None
+
+    def used(self, minutes: int) -> int | None:
+        return self.windows.get(minutes)
+
+
+def _usage(result: dict[str, Any]) -> Usage:
+    limits = result.get("rateLimits") or {}
+    windows = {}
+    for name in ("primary", "secondary"):
+        window = limits.get(name) or {}
+        if window.get("windowDurationMins") is not None:
+            windows[int(window["windowDurationMins"])] = int(window.get("usedPercent") or 0)
+    return Usage(
+        windows=windows,
+        allowed=result.get("ordinaryUsageAllowed"),
+        reached=limits.get("rateLimitReachedType"),
+    )
+
+
 @dataclass
 class TurnResult:
     status: str
@@ -242,12 +291,19 @@ class WorkspaceSession:
                 turn = params.get("turn") or {}
                 result.status = turn.get("status", "completed")
                 if result.status == "failed":
-                    raise WorkspaceError(f"ターンが失敗しました: {turn.get('error')}")
+                    error = turn.get("error")
+                    if _is_usage_limit(error):
+                        raise UsageLimitError(f"使用量の上限に当たりました: {error}")
+                    raise WorkspaceError(f"ターンが失敗しました: {error}")
                 break
         else:
             raise WorkspaceError(f"1回の頼みごとが {self._turn_timeout:.0f} 秒を超えました")
         result.seconds = round(time.monotonic() - started, 1)
         return result
+
+    def usage(self) -> Usage:
+        """アカウントの今の使用量。頼む前に見て、上限に近ければ頼まないために使う。"""
+        return _usage(self._request("account/rateLimits/read", None))
 
     def _collect(self, result: TurnResult, item: dict[str, Any]) -> None:
         kind = item.get("type")

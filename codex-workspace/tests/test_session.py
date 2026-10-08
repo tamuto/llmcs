@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_workspace import WorkspaceError, WorkspaceSession, docker_command
+from codex_workspace import UsageLimitError, WorkspaceError, WorkspaceSession, docker_command
 from codex_workspace.session import parse_created
 
 FAKE = [sys.executable, str(Path(__file__).with_name("fake_app_server.py"))]
@@ -65,6 +65,23 @@ def test_失敗したターンは例外にする(tmp_path, monkeypatch):
     monkeypatch.setenv("FAKE_SCENARIO", "fail")
     with WorkspaceSession(FAKE) as session, pytest.raises(WorkspaceError, match="失敗"):
         session.run_turn("x")
+
+
+def test_使用量の上限に当たったターンは_それと分かる例外にする(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "log.jsonl"))
+    monkeypatch.setenv("FAKE_SCENARIO", "usage")
+    with WorkspaceSession(FAKE) as session, pytest.raises(UsageLimitError, match="上限"):
+        session.run_turn("x")
+
+
+def test_アカウントの使用量を窓の長さごとに読む(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "log.jsonl"))
+    monkeypatch.setenv("FAKE_USAGE", "72,15")
+    with WorkspaceSession(FAKE) as session:
+        usage = session.usage()
+    assert usage.windows == {300: 72, 10080: 15}
+    assert usage.used(300) == 72 and usage.used(60) is None
+    assert usage.allowed is True and usage.reached is None
 
 
 def test_Dockerの作成日時を読む():
