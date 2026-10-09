@@ -9,11 +9,13 @@ const notify = (method, params) => send({ jsonrpc: "2.0", method, params });
 
 function runTurn(turn, inThread) {
   notify("turn/started", { turn: { id: turn } });
-  if (scenario === "fail" || scenario === "usage") {
+  if (scenario === "fail" || scenario === "usage" || scenario === "plan-usage") {
     const error =
       scenario === "usage"
         ? { message: "You've hit your usage limit", codexErrorInfo: "usageLimitExceeded" }
-        : { message: "x" };
+        : scenario === "plan-usage"
+          ? { message: 'unexpected status 429: {"error":{"code":"subscription_sharing_usage_limit_exceeded"}}', codexErrorInfo: "other" }
+          : { message: "x" };
     notify("turn/completed", { turn: { id: turn, status: "failed", error } });
     return;
   }
@@ -47,7 +49,13 @@ for await (const line of createInterface({ input: process.stdin })) {
   appendFileSync(process.env.FAKE_LOG, `${JSON.stringify(message)}\n`);
   if (!("id" in message) || !("method" in message)) continue;
   const { id, method, params } = message;
-  if (method === "thread/start") {
+  if (method === "initialize") {
+    // 受け取った環境変数を記録する (access token が環境で渡っているか確かめるため)
+    appendFileSync(process.env.FAKE_LOG, `${JSON.stringify({ env: { ACCESS_TOKEN: process.env.ACCESS_TOKEN ?? null } })}\n`);
+    send({ jsonrpc: "2.0", id, result: {} });
+  } else if (method === "thread/resume") {
+    send({ jsonrpc: "2.0", id, result: { thread: { id: params.threadId }, model: "fake" } });
+  } else if (method === "thread/start") {
     inThread = 0;
     send({ jsonrpc: "2.0", id, result: { thread: { id: "t1" }, model: "fake" } });
   } else if (method === "turn/start") {
