@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   DOCKER_CONTEXT,
   UsageLimitError,
+  chatgptPlanOverrides,
   WorkspaceError,
   WorkspaceSession,
   dockerCommand,
@@ -42,6 +43,50 @@ test("作業場所と認証情報だけをマウントする", () => {
   assert.deepEqual(fileBased.slice(-2), ["-c", "a=1"]);
   assert.throws(() => dockerCommand("/w"), TypeError);
   assert.throws(() => dockerCommand("/w", { authVolume: "v", authFile: "f" }), TypeError);
+});
+
+test("access token を環境変数で渡すときは、認証をマウントせずプラン利用の設定で起こし、値は引数に入れない", () => {
+  const command = dockerCommand("/w", { accessTokenEnv: "ACCESS_TOKEN", configOverrides: ["model=\"x\""] });
+  const mounts = command.flatMap((a, i) => (a === "--mount" ? [command[i + 1]] : []));
+  assert.deepEqual(mounts, ["type=bind,src=/w,dst=/workspace"]);
+  const e = command.indexOf("-e");
+  assert.equal(command[e + 1], "ACCESS_TOKEN"); // 名前だけ。値は docker を起こすプロセスの環境から
+  assert.ok(e < command.indexOf("llmcs-codex-workspace:local"));
+  const overrides = command.flatMap((a, i) => (a === "-c" ? [command[i + 1]] : []));
+  assert.deepEqual(overrides, [...chatgptPlanOverrides("ACCESS_TOKEN"), 'model="x"']);
+  assert.ok(overrides.includes('model_providers.openai_chatgpt_plan.env_key="ACCESS_TOKEN"'));
+  assert.ok(overrides.includes("model_providers.openai_chatgpt_plan.requires_openai_auth=false"));
+  assert.throws(() => dockerCommand("/w", { accessTokenEnv: "A", authVolume: "v" }), TypeError);
+  assert.throws(() => dockerCommand("/w", { accessTokenEnv: "A=secret" }), TypeError);
+});
+
+test("環境変数とアプリの名乗りを渡し、トークンを替えて起動し直してスレッドを続ける", async () => {
+  const { command, requests } = fake();
+  await using session = await WorkspaceSession.open(command, {
+    env: { ACCESS_TOKEN: "token-1" },
+    clientInfo: { name: "infodb_p3", title: "infodb p3", version: "1.2.3" },
+  });
+  const thread = await session.startThread();
+  await session.runTurn("1件目");
+  await session.restart({ env: { ACCESS_TOKEN: "token-2" } });
+  assert.equal(await session.resumeThread(thread), thread);
+  const second = await session.runTurn("2件目");
+  await session.close();
+  assert.equal(second.status, "completed");
+
+  const log = requests();
+  assert.deepEqual(log.filter((m) => m.env).map((m) => m.env.ACCESS_TOKEN), ["token-1", "token-2"]);
+  const inits = log.filter((m) => m.method === "initialize");
+  assert.equal(inits.length, 2);
+  assert.deepEqual(inits[0].params.clientInfo, { name: "infodb_p3", title: "infodb p3", version: "1.2.3" });
+  assert.deepEqual(log.find((m) => m.method === "thread/resume")?.params, { threadId: thread });
+  // トークンは JSON-RPC のメッセージには載らない
+  assert.ok(!log.filter((m) => m.method).some((m) => JSON.stringify(m).includes("token-")));
+});
+
+test("プラン利用の使用量の上限 (subscription_sharing_usage_limit_exceeded) も UsageLimitError にする", async () => {
+  await using session = await WorkspaceSession.open(fake({ FAKE_SCENARIO: "plan-usage" }).command);
+  await assert.rejects(session.runTurn("x"), UsageLimitError);
 });
 
 test("スレッドは作業場所で囲いなし・承認なしで立てる", async () => {

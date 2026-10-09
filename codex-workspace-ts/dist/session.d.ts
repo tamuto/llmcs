@@ -10,12 +10,23 @@
  * 頼むたびに、Codex が書き換えたファイル、動かしたコマンド、使ったトークンを返すので、
  * 呼ぶ側はその結果を確かめて、崩れていれば作業場所を元に戻せばよい。
  *
+ * 認証は2通り。Codex の初期設定でサインインした auth.json をマウントするか、Sign in with ChatGPT で
+ * 呼ぶ側が得た access token を環境変数で渡す (chatgptPlanOverrides)。後者ではファイルをマウントせず、
+ * トークンの値はコマンドの引数に入れない。
+ *
  * 作業場所のパスは、Docker のデーモンから見た場所 (ホストの場所) で渡す。開発環境の
  * コンテナの中から動かすときは、そのコンテナの中の場所とは違うことがある。
  */
 export declare const DEFAULT_IMAGE = "llmcs-codex-workspace:local";
 export declare const CONTAINER_WORKSPACE = "/workspace";
 export declare const CONTAINER_AUTH = "/codex/auth.json";
+/** Sign in with ChatGPT の access token を app-server に渡す環境変数の既定の名前 */
+export declare const ACCESS_TOKEN_ENV = "ACCESS_TOKEN";
+/**
+ * Sign in with ChatGPT のプラン利用で app-server を動かす設定 (公式の Codex app-server の手順のとおり)。
+ * Codex は環境変数 envKey の値を `Authorization: Bearer` で /v1/responses に送る。Codex 自身のサインインは要らない。
+ */
+export declare function chatgptPlanOverrides(envKey?: string): string[];
 export declare class WorkspaceError extends Error {
     name: string;
 }
@@ -79,18 +90,38 @@ export interface DockerCommandOptions {
     authSubpath?: string;
     /** 認証情報のホストのファイル */
     authFile?: string;
+    /**
+     * Sign in with ChatGPT の access token を入れた環境変数の名前 (例: ACCESS_TOKEN)。
+     * 指定すると認証のファイルはマウントせず、`-e <名前>` で docker を起こしたプロセスの環境から値を引き継ぎ、
+     * chatgptPlanOverrides の設定で app-server を起こす。値は引数に入らない (WorkspaceSessionOptions.env で渡す)。
+     */
+    accessTokenEnv?: string;
     docker?: string;
     configOverrides?: string[];
 }
 /**
- * app-server を起こす docker run。認証情報はボリュームの中のファイルか、ホストのファイルで渡す。
+ * app-server を起こす docker run。認証は、ボリュームの中のファイル・ホストのファイル・access token の環境変数のどれか1つ。
  *
- * 認証情報は読み書きできるようにマウントする。Codex がトークンを更新したときに書き戻すため。
+ * 認証情報のファイルは読み書きできるようにマウントする。Codex がトークンを更新したときに書き戻すため。
+ * access token のときは Codex は更新しない (更新は呼ぶ側が行い、起動し直す → WorkspaceSession.restart)。
  */
 export declare function dockerCommand(workspace: string, options?: DockerCommandOptions): string[];
+/** initialize で名乗るアプリ。Sign in with ChatGPT では name を登録のときの agent_name_hint と同じにする */
+export interface ClientInfo {
+    name: string;
+    title?: string;
+    version: string;
+}
 export interface WorkspaceSessionOptions {
     model?: string;
     effort?: string;
+    /**
+     * app-server (docker) のプロセスに足す環境変数 (Sign in with ChatGPT の access token など)。
+     * 今のプロセスの環境に重ねて渡す。値はログや例外に出さない。
+     */
+    env?: Record<string, string>;
+    /** initialize で名乗るアプリ (既定は codex_workspace) */
+    clientInfo?: ClientInfo;
     /** 1回の頼みごとの上限 (ミリ秒)。既定 30分 */
     turnTimeoutMs?: number;
     /** JSON-RPC の要求1つの上限 (ミリ秒)。既定 2分 */
@@ -105,7 +136,7 @@ export declare class WorkspaceSession {
     threadId: string | null;
     model: string | null;
     private readonly command;
-    private readonly options;
+    private options;
     private proc;
     private queue;
     private nextId;
@@ -115,6 +146,15 @@ export declare class WorkspaceSession {
     /** 起動して initialize まで済ませたセッション。`await using` で閉じられる。 */
     static open(command: string[], options?: WorkspaceSessionOptions): Promise<WorkspaceSession>;
     start(): Promise<void>;
+    /**
+     * 起動し直す (Sign in with ChatGPT の access token を更新したとき)。env を渡すと置き換える。
+     * スレッドを続けるには、このあと resumeThread を呼ぶ (記録を残さないスレッドや、消えたコンテナのスレッドは続けられない)。
+     */
+    restart(options?: {
+        env?: Record<string, string>;
+    }): Promise<void>;
+    /** 保存してあるスレッドを続ける (thread/resume)。 */
+    resumeThread(threadId: string): Promise<string>;
     startThread(developerInstructions?: string): Promise<string>;
     /** 1回頼んで、終わるまで待つ。 */
     runTurn(text: string, options?: RunTurnOptions): Promise<TurnResult>;

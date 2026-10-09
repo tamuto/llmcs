@@ -10,6 +10,10 @@
  * 頼むたびに、Codex が書き換えたファイル、動かしたコマンド、使ったトークンを返すので、
  * 呼ぶ側はその結果を確かめて、崩れていれば作業場所を元に戻せばよい。
  *
+ * 認証は2通り。Codex の初期設定でサインインした auth.json をマウントするか、Sign in with ChatGPT で
+ * 呼ぶ側が得た access token を環境変数で渡す (chatgptPlanOverrides)。後者ではファイルをマウントせず、
+ * トークンの値はコマンドの引数に入れない。
+ *
  * 作業場所のパスは、Docker のデーモンから見た場所 (ホストの場所) で渡す。開発環境の
  * コンテナの中から動かすときは、そのコンテナの中の場所とは違うことがある。
  */
@@ -21,7 +25,27 @@ export const DEFAULT_IMAGE = "llmcs-codex-workspace:local";
 export const CONTAINER_WORKSPACE = "/workspace";
 export const CONTAINER_AUTH = "/codex/auth.json";
 const CLIENT_NAME = "codex_workspace";
-const CLIENT_VERSION = "0.1.0";
+const CLIENT_VERSION = "0.2.0";
+
+/** Sign in with ChatGPT の access token を app-server に渡す環境変数の既定の名前 */
+export const ACCESS_TOKEN_ENV = "ACCESS_TOKEN";
+
+/**
+ * Sign in with ChatGPT のプラン利用で app-server を動かす設定 (公式の Codex app-server の手順のとおり)。
+ * Codex は環境変数 envKey の値を `Authorization: Bearer` で /v1/responses に送る。Codex 自身のサインインは要らない。
+ */
+export function chatgptPlanOverrides(envKey = ACCESS_TOKEN_ENV): string[] {
+  const p = "model_providers.openai_chatgpt_plan";
+  return [
+    `model_provider="openai_chatgpt_plan"`,
+    `${p}.name="ChatGPT plan"`,
+    `${p}.base_url="https://api.openai.com/v1"`,
+    `${p}.env_key="${envKey}"`,
+    `${p}.wire_api="responses"`,
+    `${p}.requires_openai_auth=false`,
+    `${p}.supports_websockets=false`,
+  ];
+}
 
 export class WorkspaceError extends Error {
   override name = "WorkspaceError";
@@ -38,11 +62,15 @@ export class UsageLimitError extends WorkspaceError {
 
 /** codexErrorInfo のうち、使用量の上限に当たったもの。 */
 const USAGE_LIMIT_ERRORS = new Set(["usageLimitExceeded", "rateLimitExceeded"]);
+/** Sign in with ChatGPT のプラン利用で、使用量の上限に当たったときの Responses のエラーコード */
+const PLAN_USAGE_LIMIT_CODE = "subscription_sharing_usage_limit_exceeded";
 
 function isUsageLimit(error: unknown): boolean {
   const info = isRecord(error) ? error.codexErrorInfo : undefined;
-  if (typeof info === "string") return USAGE_LIMIT_ERRORS.has(info);
-  return isRecord(info) && Object.keys(info).some((key) => USAGE_LIMIT_ERRORS.has(key));
+  if (typeof info === "string" && USAGE_LIMIT_ERRORS.has(info)) return true;
+  if (isRecord(info) && Object.keys(info).some((key) => USAGE_LIMIT_ERRORS.has(key))) return true;
+  // 独自の provider では、API のエラーが本文のまま届く
+  return json(error).includes(PLAN_USAGE_LIMIT_CODE);
 }
 
 /**
@@ -120,37 +148,64 @@ export interface DockerCommandOptions {
   authSubpath?: string;
   /** 認証情報のホストのファイル */
   authFile?: string;
+  /**
+   * Sign in with ChatGPT の access token を入れた環境変数の名前 (例: ACCESS_TOKEN)。
+   * 指定すると認証のファイルはマウントせず、`-e <名前>` で docker を起こしたプロセスの環境から値を引き継ぎ、
+   * chatgptPlanOverrides の設定で app-server を起こす。値は引数に入らない (WorkspaceSessionOptions.env で渡す)。
+   */
+  accessTokenEnv?: string;
   docker?: string;
   configOverrides?: string[];
 }
 
 /**
- * app-server を起こす docker run。認証情報はボリュームの中のファイルか、ホストのファイルで渡す。
+ * app-server を起こす docker run。認証は、ボリュームの中のファイル・ホストのファイル・access token の環境変数のどれか1つ。
  *
- * 認証情報は読み書きできるようにマウントする。Codex がトークンを更新したときに書き戻すため。
+ * 認証情報のファイルは読み書きできるようにマウントする。Codex がトークンを更新したときに書き戻すため。
+ * access token のときは Codex は更新しない (更新は呼ぶ側が行い、起動し直す → WorkspaceSession.restart)。
  */
 export function dockerCommand(workspace: string, options: DockerCommandOptions = {}): string[] {
-  const { image = DEFAULT_IMAGE, authVolume, authSubpath = "auth.json", authFile, docker = "docker" } = options;
-  if ((authVolume === undefined) === (authFile === undefined)) {
-    throw new TypeError("authVolume か authFile のどちらか一方を渡してください");
+  const { image = DEFAULT_IMAGE, authVolume, authSubpath = "auth.json", authFile, accessTokenEnv, docker = "docker" } = options;
+  if ([authVolume, authFile, accessTokenEnv].filter((x) => x !== undefined).length !== 1) {
+    throw new TypeError("authVolume・authFile・accessTokenEnv のどれか1つを渡してください");
+  }
+  if (accessTokenEnv !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(accessTokenEnv)) {
+    throw new TypeError(`環境変数の名前ではありません: ${accessTokenEnv}`);
   }
   const auth =
-    authVolume !== undefined
-      ? `type=volume,src=${authVolume},dst=${CONTAINER_AUTH},volume-subpath=${authSubpath}`
-      : `type=bind,src=${authFile},dst=${CONTAINER_AUTH}`;
+    accessTokenEnv !== undefined
+      ? ["-e", accessTokenEnv]
+      : authVolume !== undefined
+        ? ["--mount", `type=volume,src=${authVolume},dst=${CONTAINER_AUTH},volume-subpath=${authSubpath}`]
+        : ["--mount", `type=bind,src=${authFile},dst=${CONTAINER_AUTH}`];
   const command = [
     docker, "run", "-i", "--rm",
     "--mount", `type=bind,src=${workspace},dst=${CONTAINER_WORKSPACE}`,
-    "--mount", auth,
+    ...auth,
     image,
   ];
-  for (const override of options.configOverrides ?? []) command.push("-c", override);
+  const overrides = [...(accessTokenEnv !== undefined ? chatgptPlanOverrides(accessTokenEnv) : []), ...(options.configOverrides ?? [])];
+  for (const override of overrides) command.push("-c", override);
   return command;
+}
+
+/** initialize で名乗るアプリ。Sign in with ChatGPT では name を登録のときの agent_name_hint と同じにする */
+export interface ClientInfo {
+  name: string;
+  title?: string;
+  version: string;
 }
 
 export interface WorkspaceSessionOptions {
   model?: string;
   effort?: string;
+  /**
+   * app-server (docker) のプロセスに足す環境変数 (Sign in with ChatGPT の access token など)。
+   * 今のプロセスの環境に重ねて渡す。値はログや例外に出さない。
+   */
+  env?: Record<string, string>;
+  /** initialize で名乗るアプリ (既定は codex_workspace) */
+  clientInfo?: ClientInfo;
   /** 1回の頼みごとの上限 (ミリ秒)。既定 30分 */
   turnTimeoutMs?: number;
   /** JSON-RPC の要求1つの上限 (ミリ秒)。既定 2分 */
@@ -170,7 +225,7 @@ export class WorkspaceSession {
   model: string | null = null;
 
   private readonly command: string[];
-  private readonly options: WorkspaceSessionOptions;
+  private options: WorkspaceSessionOptions;
   private proc: ChildProcessWithoutNullStreams | null = null;
   private queue = new MessageQueue();
   private nextId = 0;
@@ -191,7 +246,9 @@ export class WorkspaceSession {
 
   async start(): Promise<void> {
     const [file, ...args] = this.command;
-    const proc = spawn(file, args, { stdio: ["pipe", "pipe", "ignore"] }) as unknown as ChildProcessWithoutNullStreams;
+    const env = this.options.env ? { ...process.env, ...this.options.env } : process.env;
+    this.queue = new MessageQueue();
+    const proc = spawn(file, args, { stdio: ["pipe", "pipe", "ignore"], env }) as unknown as ChildProcessWithoutNullStreams;
     await new Promise<void>((resolve, reject) => {
       proc.once("spawn", resolve);
       proc.once("error", (error) => reject(new WorkspaceError(`起動できません: ${file}`, { cause: error })));
@@ -202,8 +259,28 @@ export class WorkspaceSession {
     const lines = createInterface({ input: proc.stdout });
     lines.on("line", (line) => this.queue.push(line));
     lines.on("close", () => this.queue.end());
-    await this.request("initialize", { clientInfo: { name: CLIENT_NAME, version: CLIENT_VERSION } });
+    await this.request("initialize", { clientInfo: this.options.clientInfo ?? { name: CLIENT_NAME, version: CLIENT_VERSION } });
     this.notify("initialized");
+  }
+
+  /**
+   * 起動し直す (Sign in with ChatGPT の access token を更新したとき)。env を渡すと置き換える。
+   * スレッドを続けるには、このあと resumeThread を呼ぶ (記録を残さないスレッドや、消えたコンテナのスレッドは続けられない)。
+   */
+  async restart(options: { env?: Record<string, string> } = {}): Promise<void> {
+    await this.close();
+    if (options.env) this.options = { ...this.options, env: options.env };
+    await this.start();
+  }
+
+  /** 保存してあるスレッドを続ける (thread/resume)。 */
+  async resumeThread(threadId: string): Promise<string> {
+    const result = await this.request("thread/resume", { threadId });
+    const thread = isRecord(result.thread) ? result.thread : {};
+    this.threadId = typeof thread.id === "string" ? thread.id : threadId;
+    this.total = {};
+    if (typeof result.model === "string") this.model = result.model;
+    return this.threadId;
   }
 
   async startThread(developerInstructions?: string): Promise<string> {
