@@ -1,11 +1,12 @@
 """コンテナの中の codex app-server に、作業場所を渡してファイルを書かせる。
 
-TypeScript 版 (@infodb/codex-workspace) にあって、この Python 版にまだ無い機能がある
-(access token での認証、起動し直してスレッドを続ける、ターンの中止など)。直す予定の一覧と、
-呼ぶ側で探す箇所: https://github.com/tamuto/llmcs/blob/main/codex-workspace/DIFFERENCES.md
+TypeScript 版 (@infodb/codex-workspace) と同じ機能を目指している。違いと、版ごとに呼ぶ側で
+書き換える箇所: https://github.com/tamuto/llmcs/blob/main/codex-workspace/DIFFERENCES.md
 """
 
 from .session import (
+    ACCESS_TOKEN_ENV,
+    CONTAINER_AUTH,
     CONTAINER_WORKSPACE,
     DEFAULT_IMAGE,
     TurnResult,
@@ -13,11 +14,17 @@ from .session import (
     UsageLimitError,
     WorkspaceError,
     WorkspaceSession,
+    chatgpt_plan_overrides,
     docker_command,
+    docker_context,
     ensure_image,
+    parse_created,
+    parse_usage,
 )
 
 __all__ = [
+    "ACCESS_TOKEN_ENV",
+    "CONTAINER_AUTH",
     "CONTAINER_WORKSPACE",
     "DEFAULT_IMAGE",
     "TurnResult",
@@ -25,6 +32,10 @@ __all__ = [
     "UsageLimitError",
     "WorkspaceError",
     "WorkspaceSession",
+    "chatgpt_plan_overrides",
     "docker_command",
+    "docker_context",
     "ensure_image",
+    "parse_created",
+    "parse_usage",
 ]

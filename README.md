@@ -54,12 +54,12 @@ usage.used(300), usage.used(10080)   # 5時間の窓と週の窓の、使った�
 
 ```bash
 cd codex-workspace
-docker build -t llmcs-codex-workspace:local src/codex_workspace   # 手で作り直すとき
+docker build -t llmcs-codex-workspace:local src/codex_workspace/docker   # 手で作り直すとき
 uv run pytest -q
 uv run ruff check .
 ```
 
-TypeScript 版（`codex-workspace-ts/`）も同じ使い方です。今は TypeScript 版が先に進んでいて、Python 版で直す予定の差分は
+TypeScript 版（`codex-workspace-ts/`）も同じ使い方です。名前の対応と、版を上げたときに呼ぶ側で書き換える箇所は
 [codex-workspace/DIFFERENCES.md](codex-workspace/DIFFERENCES.md) にあります。
 
 ```ts

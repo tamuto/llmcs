@@ -18,16 +18,25 @@ def notify(method, params):
 
 
 def run_turn(turn, in_thread):
+    scenario = os.environ.get("FAKE_SCENARIO")
     notify("turn/started", {"turn": {"id": turn}})
-    if os.environ.get("FAKE_SCENARIO") in ("fail", "usage"):
+    if scenario in ("fail", "usage", "plan-usage"):
         error = {"message": "x"}
-        if os.environ.get("FAKE_SCENARIO") == "usage":
+        if scenario == "usage":
             error = {
                 "message": "You've hit your usage limit",
                 "codexErrorInfo": "usageLimitExceeded",
             }
+        elif scenario == "plan-usage":
+            error = {
+                "message": 'unexpected status 429: {"error":{"code":'
+                '"subscription_sharing_usage_limit_exceeded"}}',
+                "codexErrorInfo": "other",
+            }
         notify("turn/completed", {"turn": {"id": turn, "status": "failed", "error": error}})
         return
+    if scenario == "slow":
+        return  # turn/interrupt が来るまで終わらない
     # 承認は求めない設定でも、要求が来たら断られることを確かめる。
     send({"jsonrpc": "2.0", "id": 900, "method": "item/fileChange/requestApproval", "params": {}})
     item = {"type": "commandExecution", "id": "c1", "command": "rg -l AWS concepts", "exitCode": 0}
@@ -67,7 +76,16 @@ def main():
         if "id" not in message or "method" not in message:
             continue
         method = message["method"]
-        if method == "thread/start":
+        params = message.get("params") or {}
+        if method == "initialize":
+            # 受け取った環境変数を記録する (access token が環境で渡っているか確かめるため)。
+            log.write(json.dumps({"env": {"ACCESS_TOKEN": os.environ.get("ACCESS_TOKEN")}}) + "\n")
+            log.flush()
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+        elif method == "thread/resume":
+            result = {"thread": {"id": params["threadId"]}, "model": "fake"}
+            send({"jsonrpc": "2.0", "id": message["id"], "result": result})
+        elif method == "thread/start":
             in_thread = 0
             send(
                 {
@@ -81,6 +99,9 @@ def main():
             in_thread += 1
             send({"jsonrpc": "2.0", "id": message["id"], "result": {"turn": {"id": f"u{turns}"}}})
             run_turn(f"u{turns}", in_thread)
+        elif method == "turn/interrupt":
+            send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+            notify("turn/completed", {"turn": {"id": params["turnId"], "status": "interrupted"}})
         elif method == "account/rateLimits/read":
             five_hour, weekly = (int(v) for v in os.environ.get("FAKE_USAGE", "8,1").split(","))
             limits = {

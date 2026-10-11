@@ -48,11 +48,11 @@ await session.runTurn("次の誤りを直してください …"); // 同じス�
 | `s.start_thread(...)` / `s.run_turn(...)` / `s.usage()` | `await s.startThread(...)` / `await s.runTurn(...)` / `await s.usage()` |
 | `TurnResult.commands[].exit_code` | `TurnResult.commands[].exitCode` |
 | `turn_timeout` / `request_timeout`（秒） | `turnTimeoutMs` / `requestTimeoutMs`（ミリ秒） |
-
-TypeScript 版だけにあるもの:
-
-- `runTurn(text, { signal })` — `AbortSignal` で中止すると `turn/interrupt` を送り、`status: "interrupted"` の結果を返す
-- `DOCKER_CONTEXT` — 同梱の Dockerfile のあるフォルダ
+| `docker_command(ws, access_token_env=ACCESS_TOKEN_ENV)` / `chatgpt_plan_overrides()` | `dockerCommand(ws, { accessTokenEnv: ACCESS_TOKEN_ENV })` / `chatgptPlanOverrides()` |
+| `WorkspaceSession(cmd, env=..., client_info=...)` | `WorkspaceSession.open(cmd, { env, clientInfo })` |
+| `s.restart(env=...)` / `s.resume_thread(id)` | `await s.restart({ env })` / `await s.resumeThread(id)` |
+| `s.run_turn(text, cancel=threading.Event())` | `await s.runTurn(text, { signal })`（`AbortSignal`） |
+| `with docker_context() as path:` | `DOCKER_CONTEXT` |
 
 例外は `WorkspaceError`、使用量の上限に当たったターンはその派生の `UsageLimitError` です
 （待てば戻るが、すぐに頼み直しても同じように失敗するので、続けて頼むのをやめる）。
@@ -104,5 +104,5 @@ npm login              # @infodb に公開できるアカウントで
 npm publish            # prepublishOnly で pnpm check が走る。publishConfig.access は public
 ```
 
-Python 版の振る舞いを変えたときは、こちらにも同じ変更を入れます。こちらにだけ入れたもの（Python 版で直す予定のもの）は
+Python 版の振る舞いを変えたときは、こちらにも同じ変更を入れます。片方にだけ入れたものは
 [codex-workspace/DIFFERENCES.md](../codex-workspace/DIFFERENCES.md) に書き足します。
