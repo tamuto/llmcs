@@ -193,7 +193,7 @@ test("Docker の作成日時を読む", () => {
 });
 
 test("Dockerfile は Python 版と同じものを使う (同じイメージを共有するため)", (t) => {
-  const python = fileURLToPath(new URL("../../codex-workspace/src/codex_workspace/Dockerfile", import.meta.url));
+  const python = fileURLToPath(new URL("../../codex-workspace/src/codex_workspace/docker/Dockerfile", import.meta.url));
   if (!existsSync(python)) return t.skip("Python 版が無い");
   assert.equal(readFileSync(join(DOCKER_CONTEXT, "Dockerfile"), "utf8"), readFileSync(python, "utf8"));
 });

@@ -9,6 +9,10 @@ danger-full-access でコマンドの実行とファイルの書き込みを許�
 頼むたびに、Codex が書き換えたファイル、動かしたコマンド、使ったトークンを返すので、
 呼ぶ側はその結果を確かめて、崩れていれば作業場所を元に戻せばよい。
 
+認証は2通り。Codex の初期設定でサインインした auth.json をマウントするか、Sign in with ChatGPT で
+呼ぶ側が得た access token を環境変数で渡す (chatgpt_plan_overrides)。後者ではファイルをマウントせず、
+トークンの値はコマンドの引数に入れない。
+
 作業場所のパスは、Docker のデーモンから見た場所 (ホストの場所) で渡す。開発環境の
 コンテナの中から動かすときは、そのコンテナの中の場所とは違うことがある。
 """
@@ -16,20 +20,47 @@ danger-full-access でコマンドの実行とファイルの書き込みを許�
 from __future__ import annotations
 
 import json
+import os
 import queue
+import re
 import subprocess
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from importlib import resources
+from pathlib import Path
 from typing import Any, Self
 
 DEFAULT_IMAGE = "llmcs-codex-workspace:local"
 CONTAINER_WORKSPACE = "/workspace"
 CONTAINER_AUTH = "/codex/auth.json"
 CLIENT_NAME = "codex_workspace"
+CLIENT_VERSION = "0.3.0"
+
+ACCESS_TOKEN_ENV = "ACCESS_TOKEN"
+"""Sign in with ChatGPT の access token を app-server に渡す環境変数の既定の名前。"""
+ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def chatgpt_plan_overrides(env_key: str = ACCESS_TOKEN_ENV) -> list[str]:
+    """Sign in with ChatGPT のプラン利用で app-server を動かす設定 (公式の Codex app-server の手順のとおり)。
+
+    Codex は環境変数 env_key の値を `Authorization: Bearer` で /v1/responses に送る。
+    Codex 自身のサインインは要らない。
+    """
+    p = "model_providers.openai_chatgpt_plan"
+    return [
+        'model_provider="openai_chatgpt_plan"',
+        f'{p}.name="ChatGPT plan"',
+        f'{p}.base_url="https://api.openai.com/v1"',
+        f'{p}.env_key="{env_key}"',
+        f'{p}.wire_api="responses"',
+        f"{p}.requires_openai_auth=false",
+        f"{p}.supports_websockets=false",
+    ]
 
 
 class WorkspaceError(RuntimeError):
@@ -45,13 +76,18 @@ class UsageLimitError(WorkspaceError):
 
 # codexErrorInfo のうち、使用量の上限に当たったもの。
 USAGE_LIMIT_ERRORS = frozenset({"usageLimitExceeded", "rateLimitExceeded"})
+# Sign in with ChatGPT のプラン利用で、使用量の上限に当たったときの Responses のエラーコード。
+PLAN_USAGE_LIMIT_CODE = "subscription_sharing_usage_limit_exceeded"
 
 
 def _is_usage_limit(error: object) -> bool:
     info = error.get("codexErrorInfo") if isinstance(error, dict) else None
-    if isinstance(info, str):
-        return info in USAGE_LIMIT_ERRORS
-    return isinstance(info, dict) and any(key in USAGE_LIMIT_ERRORS for key in info)
+    if isinstance(info, str) and info in USAGE_LIMIT_ERRORS:
+        return True
+    if isinstance(info, dict) and any(key in USAGE_LIMIT_ERRORS for key in info):
+        return True
+    # 独自の provider では、API のエラーが本文のまま届く。
+    return PLAN_USAGE_LIMIT_CODE in json.dumps(error, ensure_ascii=False)
 
 
 @dataclass
@@ -71,7 +107,7 @@ class Usage:
         return self.windows.get(minutes)
 
 
-def _usage(result: dict[str, Any]) -> Usage:
+def parse_usage(result: dict[str, Any]) -> Usage:
     limits = result.get("rateLimits") or {}
     windows = {}
     for name in ("primary", "secondary"):
@@ -107,6 +143,16 @@ class TurnResult:
     seconds: float = 0.0
 
 
+@contextmanager
+def docker_context() -> Iterator[Path]:
+    """パッケージに同梱した Dockerfile のあるフォルダ (TypeScript 版と同じ内容)。
+
+    `with docker_context() as path:` の中で使う (パッケージが zip のときは一時的に取り出す)。
+    """
+    with resources.as_file(resources.files(__package__) / "docker") as path:
+        yield Path(path)
+
+
 def ensure_image(
     image: str = DEFAULT_IMAGE,
     *,
@@ -122,8 +168,7 @@ def ensure_image(
     moment = now or datetime.now(UTC)
     created = _image_created(image, docker)
     if created is None or moment - created > max_age:
-        context = resources.files(__package__)
-        with resources.as_file(context) as directory:
+        with docker_context() as directory:
             subprocess.run(
                 [docker, "build", "-q", "-t", image,
                  "--build-arg", f"CODEX_REFRESH={moment.isoformat(timespec='seconds')}",
@@ -166,26 +211,41 @@ def docker_command(
     auth_volume: str | None = None,
     auth_subpath: str = "auth.json",
     auth_file: str | None = None,
+    access_token_env: str | None = None,
     docker: str = "docker",
     config_overrides: tuple[str, ...] = (),
 ) -> list[str]:
-    """app-server を起こす docker run。認証情報はボリュームの中のファイルか、ホストのファイルで渡す。
+    """app-server を起こす docker run。認証は、ボリュームの中のファイル・ホストのファイル・
+    access token の環境変数のどれか1つ。
 
-    認証情報は読み書きできるようにマウントする。Codex がトークンを更新したときに書き戻すため。
+    認証情報のファイルは読み書きできるようにマウントする。Codex がトークンを更新したときに書き戻すため。
+
+    access_token_env には、Sign in with ChatGPT の access token を入れた環境変数の名前を渡す。
+    認証のファイルはマウントせず、`-e <名前>` で docker を起こしたプロセスの環境から値を引き継ぎ、
+    chatgpt_plan_overrides の設定で app-server を起こす。値は引数に入らない
+    (WorkspaceSession の env で渡す)。Codex はトークンを更新しないので、更新したら起動し直す
+    (→ WorkspaceSession.restart)。
     """
-    if (auth_volume is None) == (auth_file is None):
-        raise ValueError("auth_volume か auth_file のどちらか一方を渡してください")
-    if auth_volume is not None:
-        auth = f"type=volume,src={auth_volume},dst={CONTAINER_AUTH},volume-subpath={auth_subpath}"
+    if [auth_volume, auth_file, access_token_env].count(None) != 2:
+        raise ValueError("auth_volume・auth_file・access_token_env のどれか1つを渡してください")
+    if access_token_env is not None and not ENV_NAME.fullmatch(access_token_env):
+        raise ValueError(f"環境変数の名前ではありません: {access_token_env}")
+    if access_token_env is not None:
+        auth = ["-e", access_token_env]
+    elif auth_volume is not None:
+        mount = f"type=volume,src={auth_volume},dst={CONTAINER_AUTH},volume-subpath={auth_subpath}"
+        auth = ["--mount", mount]
     else:
-        auth = f"type=bind,src={auth_file},dst={CONTAINER_AUTH}"
+        auth = ["--mount", f"type=bind,src={auth_file},dst={CONTAINER_AUTH}"]
     command = [
         docker, "run", "-i", "--rm",
         "--mount", f"type=bind,src={workspace},dst={CONTAINER_WORKSPACE}",
-        "--mount", auth,
+        *auth,
         image,
     ]  # fmt: skip
-    for override in config_overrides:
+    overrides = [*(chatgpt_plan_overrides(access_token_env) if access_token_env else ()),
+                 *config_overrides]  # fmt: skip
+    for override in overrides:
         command += ["-c", override]
     return command
 
@@ -197,13 +257,23 @@ class WorkspaceSession:
         *,
         model: str | None = None,
         effort: str | None = None,
+        env: Mapping[str, str] | None = None,
+        client_info: Mapping[str, str] | None = None,
         turn_timeout: float = 1800.0,
         request_timeout: float = 120.0,
         on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
+        """env は app-server (docker) のプロセスに足す環境変数 (Sign in with ChatGPT の access token など)。
+        今のプロセスの環境に重ねて渡す。値はログや例外に出さない。
+
+        client_info は initialize で名乗るアプリ ({"name", "title", "version"})。既定は codex_workspace。
+        Sign in with ChatGPT では、name を登録のときの agent_name_hint と同じにする。
+        """
         self._command = command
         self._model = model
         self._effort = effort
+        self._env = dict(env) if env is not None else None
+        self._client_info = dict(client_info or {"name": CLIENT_NAME, "version": CLIENT_VERSION})
         self._turn_timeout = turn_timeout
         self._request_timeout = request_timeout
         self._on_event = on_event or (lambda _event: None)
@@ -223,6 +293,7 @@ class WorkspaceSession:
         self.close()
 
     def start(self) -> None:
+        env = {**os.environ, **self._env} if self._env is not None else None
         try:
             self._proc = subprocess.Popen(
                 self._command,
@@ -232,12 +303,35 @@ class WorkspaceSession:
                 text=True,
                 encoding="utf-8",
                 bufsize=1,
+                env=env,
             )
-        except FileNotFoundError as exc:
+        except OSError as exc:
             raise WorkspaceError(f"起動できません: {self._command[0]}") from exc
-        threading.Thread(target=self._pump, daemon=True).start()
-        self._request("initialize", {"clientInfo": {"name": CLIENT_NAME, "version": "0.1.0"}})
+        # 起動し直したとき、前のプロセスの残りの行を読まない。
+        self._lines = queue.Queue()
+        threading.Thread(target=self._pump, args=(self._proc, self._lines), daemon=True).start()
+        self._request("initialize", {"clientInfo": self._client_info})
         self._notify("initialized", None)
+
+    def restart(self, *, env: Mapping[str, str] | None = None) -> None:
+        """起動し直す (Sign in with ChatGPT の access token を更新したとき)。env を渡すと置き換える。
+
+        スレッドを続けるには、このあと resume_thread を呼ぶ (記録を残さないスレッドや、
+        消えたコンテナのスレッドは続けられない)。
+        """
+        self.close()
+        if env is not None:
+            self._env = dict(env)
+        self.start()
+
+    def resume_thread(self, thread_id: str) -> str:
+        """保存してあるスレッドを続ける (thread/resume)。"""
+        result = self._request("thread/resume", {"threadId": thread_id})
+        self.thread_id = (result.get("thread") or {}).get("id") or thread_id
+        self._total = {}
+        if isinstance(result.get("model"), str):
+            self.model = result["model"]
+        return self.thread_id
 
     def start_thread(self, developer_instructions: str | None = None) -> str:
         params: dict[str, Any] = {
@@ -257,14 +351,17 @@ class WorkspaceSession:
         self.model = result.get("model")
         return self.thread_id
 
-    def run_turn(self, text: str) -> TurnResult:
-        """1回頼んで、終わるまで待つ。"""
+    def run_turn(self, text: str, *, cancel: threading.Event | None = None) -> TurnResult:
+        """1回頼んで、終わるまで待つ。
+
+        cancel を set すると turn/interrupt を送り、status が "interrupted" の結果を返す。
+        """
         if self.thread_id is None:
             self.start_thread()
         started = time.monotonic()
         params: dict[str, Any] = {
             "threadId": self.thread_id,
-            "input": [{"type": "text", "text": text}],
+            "input": [{"type": "text", "text": text, "text_elements": []}],
         }
         if self._effort:
             params["effort"] = self._effort
@@ -272,11 +369,25 @@ class WorkspaceSession:
         result = TurnResult(status="unknown", message=None)
         before = dict(self._total)
         deadline = started + self._turn_timeout
-        for message in self._messages(deadline):
+        turn_id: str | None = None
+        interrupted = False
+
+        def interrupt() -> None:
+            # turn の id が分かってから送る (turn/start の応答より先に中止したとき)。
+            nonlocal interrupted
+            if cancel is not None and cancel.is_set() and turn_id and not interrupted:
+                interrupted = True
+                self._send("turn/interrupt", {"threadId": self.thread_id, "turnId": turn_id})
+
+        tick = 0.05 if cancel is not None else 5.0
+        for message in self._messages(deadline, on_idle=interrupt, tick=tick):
             if message.get("id") == request_id:
                 if "error" in message:
                     raise WorkspaceError(f"turn/start が失敗しました: {message['error']}")
+                turn_id = ((message.get("result") or {}).get("turn") or {}).get("id")
+                interrupt()
                 continue
+            interrupt()
             method = message.get("method")
             params = message.get("params") or {}
             if method == "item/completed":
@@ -303,7 +414,7 @@ class WorkspaceSession:
 
     def usage(self) -> Usage:
         """アカウントの今の使用量。頼む前に見て、上限に近ければ頼まないために使う。"""
-        return _usage(self._request("account/rateLimits/read", None))
+        return parse_usage(self._request("account/rateLimits/read", None))
 
     def _collect(self, result: TurnResult, item: dict[str, Any]) -> None:
         kind = item.get("type")
@@ -333,20 +444,29 @@ class WorkspaceSession:
 
     # JSON-RPC ---------------------------------------------------------------
 
-    def _pump(self) -> None:
-        assert self._proc is not None and self._proc.stdout is not None
-        for line in self._proc.stdout:
-            self._lines.put(line)
-        self._lines.put(None)
+    @staticmethod
+    def _pump(proc: subprocess.Popen[str], lines: queue.Queue[str | None]) -> None:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            lines.put(line)
+        lines.put(None)
 
-    def _messages(self, deadline: float) -> Iterator[dict[str, Any]]:
+    def _messages(
+        self,
+        deadline: float,
+        *,
+        on_idle: Callable[[], None] | None = None,
+        tick: float = 5.0,
+    ) -> Iterator[dict[str, Any]]:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
             try:
-                line = self._lines.get(timeout=min(remaining, 5.0))
+                line = self._lines.get(timeout=min(remaining, tick))
             except queue.Empty:
+                if on_idle is not None:
+                    on_idle()
                 continue
             if line is None:
                 raise WorkspaceError("app-server が終わりました")
@@ -388,8 +508,11 @@ class WorkspaceSession:
     def _write(self, payload: dict[str, Any]) -> None:
         if self._proc is None or self._proc.stdin is None:
             raise WorkspaceError("app-server が動いていません")
-        self._proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        self._proc.stdin.flush()
+        try:
+            self._proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            self._proc.stdin.flush()
+        except (BrokenPipeError, ValueError) as exc:
+            raise WorkspaceError("app-server が終わりました") from exc
 
 
 def _difference(after: dict[str, Any], before: dict[str, Any]) -> dict[str, Any]:
