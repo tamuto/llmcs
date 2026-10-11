@@ -12,7 +12,7 @@ LLM に関するクライアントとサーバをまとめるプロジェクト�
 
 Python のパッケージは、利用する側から uv の git 依存（`subdirectory` とタグ）で参照します。
 タグはパッケージ名を頭に付けます（例: `codex-app-server-client-v0.2.0`）。
-TypeScript のパッケージは pnpm の git 依存（`#<タグ>&path:/<ディレクトリ>`）で参照します。
+TypeScript のパッケージは npm レジストリに公開します（`@infodb/codex-workspace`）。
 
 どのサーバも OpenAI と同じ形で呼べるようにし、呼ぶ側は URL とモデル名だけを知っていればよいように
 します。ホスト側は `127.0.0.1` にだけ公開します。
@@ -59,10 +59,11 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-TypeScript 版（`codex-workspace-ts/`）も同じ使い方です。
+TypeScript 版（`codex-workspace-ts/`）も同じ使い方です。今は TypeScript 版が先に進んでいて、Python 版で直す予定の差分は
+[codex-workspace/DIFFERENCES.md](codex-workspace/DIFFERENCES.md) にあります。
 
 ```ts
-import { WorkspaceSession, dockerCommand, ensureImage } from "@llmcs/codex-workspace";
+import { WorkspaceSession, dockerCommand, ensureImage } from "@infodb/codex-workspace";
 
 await ensureImage();
 await using session = await WorkspaceSession.open(

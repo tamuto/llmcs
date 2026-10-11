@@ -7,3 +7,9 @@ Python から操る部品です。コンテナを囲いにするので、Codex �
 
 Codex の版は固定しません。イメージは、無いときと、作ってから決まった日数がたったときに作り直し、
 そのときの最新の Codex を入れます。
+
+## TypeScript 版との差分（直す予定）
+
+TypeScript 版（`@infodb/codex-workspace`）が先に進んでいて、Python 版にはまだ無い機能があります
+（access token での認証、起動し直してスレッドを続ける、ターンの中止など）。一覧と、呼ぶ側で探す箇所は
+[DIFFERENCES.md](DIFFERENCES.md) にまとめています。

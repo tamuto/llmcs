@@ -10,23 +10,18 @@ Python 版と同じ Dockerfile・同じイメージ（`llmcs-codex-workspace:loc
 
 ## 使い方
 
-pnpm の git 依存で、llmcs リポジトリの `codex-workspace-ts/` を参照します。タグで版を固定してください。
-タグはパッケージ名を頭に付けた `codex-workspace-ts-v<版>` です。
+npm レジストリから入れます。
 
-```json
-{
-  "dependencies": {
-    "@llmcs/codex-workspace": "github:tamuto/llmcs#codex-workspace-ts-v0.1.0&path:/codex-workspace-ts"
-  }
-}
+```bash
+npm install @infodb/codex-workspace   # pnpm add / yarn add でもよい
 ```
 
-ビルド結果（`dist/`）をコミットしているので、入れるときにスクリプトは動きません（pnpm の `allowBuilds` は不要）。
-npm はサブディレクトリの git 依存を扱えないので、pnpm を使ってください。手元で同時に直すときは
-一時的に `"link:../llmcs/codex-workspace-ts"` へ向けます。
+手元で同時に直すときは、一時的に `"link:../llmcs/codex-workspace-ts"` へ向けます。
+ビルド結果（`dist/`）はコミットしているので、pnpm の git 依存
+（`"github:tamuto/llmcs#codex-workspace-ts-v<版>&path:/codex-workspace-ts"`）でも、スクリプトを動かさずに入れられます。
 
 ```ts
-import { WorkspaceSession, dockerCommand, ensureImage, UsageLimitError } from "@llmcs/codex-workspace";
+import { WorkspaceSession, dockerCommand, ensureImage, UsageLimitError } from "@infodb/codex-workspace";
 
 await ensureImage(); // 無いか1日より古ければ作り直す (最新の Codex を入れる)
 const command = dockerCommand("/mnt/usb/assets/kotonoha/graph", { authVolume: "denv-cc-remote_codex-state" });
@@ -69,7 +64,7 @@ TypeScript 版だけにあるもの:
 サインイン・トークンの保存と更新は呼ぶ側が行います（このパッケージはトークンを扱わない）。
 
 ```ts
-import { ACCESS_TOKEN_ENV, WorkspaceSession, dockerCommand } from "@llmcs/codex-workspace";
+import { ACCESS_TOKEN_ENV, WorkspaceSession, dockerCommand } from "@infodb/codex-workspace";
 
 // 認証のファイルはマウントしない。-e ACCESS_TOKEN（名前だけ）と、プラン利用の provider の設定（-c）を付ける
 const command = dockerCommand("/path/to/workspace", { accessTokenEnv: ACCESS_TOKEN_ENV });
@@ -102,5 +97,12 @@ pnpm check       # 型検査・テスト・ビルドをして、コミットし�
 ライブラリは Node 22 以上。テストは `.ts` をそのまま動かし `await using` を使うので Node 24 以上。
 
 版を上げるときは `package.json` の `version` と `src/session.ts` の `CLIENT_VERSION` を揃え、
-`pnpm check` を通してから `codex-workspace-ts-vX.Y.Z` のタグを打ちます。
-Python 版の振る舞いを変えたときは、こちらにも同じ変更を入れます。
+`pnpm check` を通してから `codex-workspace-ts-vX.Y.Z` のタグを打ち、手で npm に公開します。
+
+```bash
+npm login              # @infodb に公開できるアカウントで
+npm publish            # prepublishOnly で pnpm check が走る。publishConfig.access は public
+```
+
+Python 版の振る舞いを変えたときは、こちらにも同じ変更を入れます。こちらにだけ入れたもの（Python 版で直す予定のもの）は
+[codex-workspace/DIFFERENCES.md](../codex-workspace/DIFFERENCES.md) に書き足します。
