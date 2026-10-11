@@ -1,8 +1,26 @@
 {
-  "name": "@llmcs/codex-workspace",
+  "name": "@infodb/codex-workspace",
   "version": "0.2.0",
   "description": "Run codex app-server in a container with only a workspace mounted (TypeScript)",
   "license": "MIT",
+  "author": "tamuto",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tamuto/llmcs.git",
+    "directory": "codex-workspace-ts"
+  },
+  "homepage": "https://github.com/tamuto/llmcs/tree/main/codex-workspace-ts#readme",
+  "bugs": {
+    "url": "https://github.com/tamuto/llmcs/issues"
+  },
+  "keywords": [
+    "codex",
+    "codex-app-server",
+    "openai",
+    "docker",
+    "sandbox",
+    "json-rpc"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -17,11 +35,15 @@
   "engines": {
     "node": ">=22"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm typecheck && pnpm test && pnpm build && git diff --exit-code -- dist"
+    "check": "pnpm typecheck && pnpm test && pnpm build && git diff --exit-code -- dist",
+    "prepublishOnly": "pnpm check"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
