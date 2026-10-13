@@ -16,9 +16,8 @@ npm レジストリから入れます。
 npm install @infodb/codex-workspace   # pnpm add / yarn add でもよい
 ```
 
-手元で同時に直すときは、一時的に `"link:../llmcs/codex-workspace-ts"` へ向けます。
-ビルド結果（`dist/`）はコミットしているので、pnpm の git 依存
-（`"github:tamuto/llmcs#codex-workspace-ts-v<版>&path:/codex-workspace-ts"`）でも、スクリプトを動かさずに入れられます。
+npm に公開した版だけを使います（git の URL や `link:` では参照しません）。
+ビルド結果（`dist/`）はコミットせず、公開するときに `prepublishOnly` で作ります。
 
 ```ts
 import { WorkspaceSession, dockerCommand, ensureImage, UsageLimitError } from "@infodb/codex-workspace";
@@ -91,7 +90,7 @@ await session.resumeThread(thread);
 ```bash
 pnpm install
 pnpm test        # 偽の app-server (test/fake-app-server.mjs) で JSON-RPC のやりとりを確かめる
-pnpm check       # 型検査・テスト・ビルドをして、コミットした dist/ が最新か確かめる
+pnpm check       # 型検査・テスト・ビルド
 ```
 
 ライブラリは Node 22 以上。テストは `.ts` をそのまま動かし `await using` を使うので Node 24 以上。

@@ -42,7 +42,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm typecheck && pnpm test && pnpm build && git diff --exit-code -- dist",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
     "prepublishOnly": "pnpm check"
   },
   "devDependencies": {

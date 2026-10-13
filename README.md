@@ -12,7 +12,8 @@ LLM に関するクライアントとサーバをまとめるプロジェクト�
 
 Python のパッケージは、利用する側から uv の git 依存（`subdirectory` とタグ）で参照します。
 タグはパッケージ名を頭に付けます（例: `codex-app-server-client-v0.2.0`）。
-TypeScript のパッケージは npm レジストリに公開します（`@infodb/codex-workspace`）。
+TypeScript のパッケージは npm レジストリに公開し、利用する側は公開した版だけを参照します（git の URL や `link:` では参照しません）。
+ビルド結果（`dist/`）はコミットせず、公開するときに作ります（`@infodb/codex-workspace`）。
 
 どのサーバも OpenAI と同じ形で呼べるようにし、呼ぶ側は URL とモデル名だけを知っていればよいように
 します。ホスト側は `127.0.0.1` にだけ公開します。
@@ -77,7 +78,7 @@ const result = await session.runTurn("inbox/a.md を取り込んでください"
 ```bash
 cd codex-workspace-ts
 pnpm install
-pnpm check   # 型検査・テスト・ビルド (dist/ はコミットする)
+pnpm check   # 型検査・テスト・ビルド（dist/ はコミットしない。公開時に作る）
 ```
 
 ## 文をベクトルにする（embedding-server）
