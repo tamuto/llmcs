@@ -57,6 +57,14 @@ export interface LoginAttempt {
   submit(callbackUrl: string): Promise<ChatGptStatus>;
 }
 
+/** 推論に使える接続か（サインイン済みで、プラン利用が許可されている）。使えなければ ChatGptAuthError */
+function checkUsable(c?: Connection): void {
+  if (!c?.tokens) throw new ChatGptAuthError("ChatGPT にサインインしていません（「Continue with ChatGPT」からサインインしてください）", "not_connected");
+  if (!c.tokens.scopes.includes(PLAN_SCOPE)) {
+    throw new ChatGptAuthError("ChatGPT プランの利用が許可されていません。もう一度サインインして、プランの利用に同意してください", "plan_not_allowed");
+  }
+}
+
 const PAGE = (title: string, body: string) =>
   `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:sans-serif;padding:2rem"><h1>${title}</h1><p>${body}</p></body>`;
 
@@ -249,20 +257,14 @@ export class ChatGptAccount {
       const t = c?.tokens;
       return t && Date.parse(t.expiresAt) - this.deps.now() > minValidMs ? t.accessToken : undefined;
     };
-    const check = (c?: Connection) => {
-      if (!c?.tokens) throw new ChatGptAuthError("ChatGPT にサインインしていません（「Continue with ChatGPT」からサインインしてください）", "not_connected");
-      if (!c.tokens.scopes.includes(PLAN_SCOPE)) {
-        throw new ChatGptAuthError("ChatGPT プランの利用が許可されていません。もう一度サインインして、プランの利用に同意してください", "plan_not_allowed");
-      }
-    };
     const c0 = await loadConnection(this.file);
-    check(c0);
+    checkUsable(c0);
     const t0 = fresh(c0);
     if (t0) return t0;
     return withLock(this.file, async () => {
       // lock を待つ間にほかのプロセスが更新していれば、それを使う
       const c = await loadConnection(this.file);
-      check(c);
+      checkUsable(c);
       const t = fresh(c);
       if (t) return t;
       try {

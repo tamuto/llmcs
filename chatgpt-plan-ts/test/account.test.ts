@@ -18,8 +18,9 @@ const endpoints: Endpoints = {
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const jwk = { ...publicKey.export({ format: "jwk" }), kid: "k1", alg: "RS256" };
 
+const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+
 function idToken(claims: Record<string, unknown>) {
-  const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
   const head = enc({ alg: "RS256", kid: "k1" });
   const body = enc(claims);
   const sig = sign("RSA-SHA256", Buffer.from(`${head}.${body}`), privateKey).toString("base64url");
@@ -95,10 +96,9 @@ test("サインイン → access token（期限が近ければ更新）→ 解�
 
 test("state の違うコールバックでは試行を終わらせない", async () => {
   resetJwksCache();
-  const now = () => Date.now();
-  const auth = fakeAuth(now);
+  const auth = fakeAuth(Date.now);
   const file = join(await mkdtemp(join(tmpdir(), "chatgpt-plan-")), "chatgpt.json");
-  const account = new ChatGptAccount({ file, appName: "infodb_test", deps: { endpoints, fetch: auth.f, now } });
+  const account = new ChatGptAccount({ file, appName: "infodb_test", deps: { endpoints, fetch: auth.f, now: Date.now } });
   const attempt = await account.startLogin({ port: 0 });
   await assert.rejects(attempt.submit(`${attempt.redirectUri}?state=other&code=c`), /state が違います/);
   assert.ok(account.pending(), "まだ待っている");

@@ -79,7 +79,7 @@ const result = await session.runTurn("inbox/a.md を取り込んでください"
 ```bash
 cd codex-workspace-ts
 pnpm install
-pnpm check   # 型検査・テスト・ビルド（dist/ はコミットしない。公開時に作る）
+pnpm check   # 型検査・Lint（oxlint）・テスト・ビルド（dist/ はコミットしない。公開時に作る）
 ```
 
 ## 文をベクトルにする（embedding-server）

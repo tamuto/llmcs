@@ -1,6 +1,6 @@
 {
   "name": "@infodb/chatgpt-plan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sign in with ChatGPT (plan usage) and the Responses API over the user's ChatGPT plan, for local apps (TypeScript)",
   "license": "MIT",
   "author": "tamuto",
@@ -40,11 +40,13 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "lint": "oxlint",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "prepublishOnly": "pnpm check"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "oxlint": "^1.87.0",
     "typescript": "^7.0.2"
   }
 }
