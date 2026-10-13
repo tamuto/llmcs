@@ -7,12 +7,14 @@ LLM に関するクライアントとサーバをまとめるプロジェクト�
 | `embedding-server/` | 文をベクトルにする HTTP サーバ（sentence-transformers、OpenAI 互換の `/v1/embeddings`） | Docker |
 | `codex-workspace/` | `codex app-server` を、作業場所だけをマウントしたコンテナで動かし、ファイルを書かせる部品 | Docker、Python 3.11 以上 |
 | `codex-workspace-ts/` | `codex-workspace` の TypeScript 版（同じイメージを共有） | Docker、Node 22 以上 |
+| `chatgpt-plan-ts/` | Sign in with ChatGPT のプラン利用で、利用者の ChatGPT プランから Responses API を直接呼ぶ部品（`@infodb/chatgpt-plan`） | Node 22 以上 |
 | `codex-app-server-client/` | `codex app-server` を stdio の JSON-RPC で呼ぶ Python クライアント | Python 3.11 以上 |
 | `llama-server/` | llama.cpp の OpenAI 互換サーバ。Jetson 用（`compose.yaml`）と CPU 用（`compose.cpu.yaml`） | Docker |
 
 Python のパッケージは、利用する側から uv の git 依存（`subdirectory` とタグ）で参照します。
 タグはパッケージ名を頭に付けます（例: `codex-app-server-client-v0.2.0`）。
-TypeScript のパッケージは npm レジストリに公開します（`@infodb/codex-workspace`）。
+TypeScript のパッケージは npm レジストリに公開し、利用する側は公開した版だけを参照します（git の URL や `link:` では参照しません）。
+ビルド結果（`dist/`）はコミットせず、公開するときに作ります（`@infodb/codex-workspace`、`@infodb/chatgpt-plan`）。
 
 どのサーバも OpenAI と同じ形で呼べるようにし、呼ぶ側は URL とモデル名だけを知っていればよいように
 します。ホスト側は `127.0.0.1` にだけ公開します。
@@ -77,7 +79,7 @@ const result = await session.runTurn("inbox/a.md を取り込んでください"
 ```bash
 cd codex-workspace-ts
 pnpm install
-pnpm check   # 型検査・テスト・ビルド (dist/ はコミットする)
+pnpm check   # 型検査・テスト・ビルド（dist/ はコミットしない。公開時に作る）
 ```
 
 ## 文をベクトルにする（embedding-server）

@@ -1,0 +1,50 @@
+{
+  "name": "@infodb/chatgpt-plan",
+  "version": "0.1.0",
+  "description": "Sign in with ChatGPT (plan usage) and the Responses API over the user's ChatGPT plan, for local apps (TypeScript)",
+  "license": "MIT",
+  "author": "tamuto",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tamuto/llmcs.git",
+    "directory": "chatgpt-plan-ts"
+  },
+  "homepage": "https://github.com/tamuto/llmcs/tree/main/chatgpt-plan-ts#readme",
+  "bugs": {
+    "url": "https://github.com/tamuto/llmcs/issues"
+  },
+  "keywords": [
+    "openai",
+    "chatgpt",
+    "sign-in-with-chatgpt",
+    "oauth",
+    "responses-api"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "prepublishOnly": "pnpm check"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}
