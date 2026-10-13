@@ -85,7 +85,7 @@ export async function withLock<T>(
         await unlink(lock).catch(() => {});
         continue;
       }
-      if (Date.now() > until) throw new Error("ChatGPT の接続の更新を待ちきれませんでした（別のプロセスが更新中です）");
+      if (Date.now() > until) throw new Error("ChatGPT の接続の更新を待ちきれませんでした（別のプロセスが更新中です）", { cause: e });
       await new Promise((r) => setTimeout(r, 20 + Math.random() * 80));
     }
   }

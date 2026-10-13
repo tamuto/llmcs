@@ -42,11 +42,13 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "lint": "oxlint",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "prepublishOnly": "pnpm check"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
+    "oxlint": "^1.87.0",
     "typescript": "^5.9.3"
   }
 }

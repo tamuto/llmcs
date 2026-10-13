@@ -90,7 +90,8 @@ await session.resumeThread(thread);
 ```bash
 pnpm install
 pnpm test        # 偽の app-server (test/fake-app-server.mjs) で JSON-RPC のやりとりを確かめる
-pnpm check       # 型検査・テスト・ビルド
+pnpm lint        # oxlint
+pnpm check       # 型検査・Lint・テスト・ビルド
 ```
 
 ライブラリは Node 22 以上。テストは `.ts` をそのまま動かし `await using` を使うので Node 24 以上。

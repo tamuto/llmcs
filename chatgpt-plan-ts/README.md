@@ -70,5 +70,5 @@ JSON Schema で形を決めた応答は `createJsonResponse()`（`text.format` �
 ```bash
 cd chatgpt-plan-ts
 pnpm install
-pnpm check   # 型チェック・テスト・ビルド
+pnpm check   # 型チェック・Lint（oxlint）・テスト・ビルド
 ```
