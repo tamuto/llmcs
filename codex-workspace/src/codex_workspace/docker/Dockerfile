@@ -5,12 +5,16 @@
 # 認証情報のファイル1つ (/codex/auth.json) だけにする (→ codex_workspace)。
 # ホストのファイルや、ほかのプロジェクトは見えない。
 #
+# Codex が作業に使う道具も入れる。検索の rg と、YAML を構造のまま読み書きする Python と PyYAML
+# (python と python3 のどちらで呼んでも同じもの)。YAML を文字列の置き換えで書き換えると、
+# 頼んでいない行まで巻き込みうる。
+#
 # Codex の版は固定しない。作るたびにその時点の最新を入れる。CODEX_REFRESH を変えると
 # Codex を入れる段からやり直すので、日付を渡して作り直せば最新になる (→ ensure_image)。
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git ripgrep python3 \
+    && apt-get install -y --no-install-recommends ca-certificates curl git ripgrep python3 python3-yaml python-is-python3 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CODEX_HOME=/codex \

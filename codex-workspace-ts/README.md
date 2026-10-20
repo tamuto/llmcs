@@ -7,6 +7,8 @@
 
 Python 版と同じ Dockerfile・同じイメージ（`llmcs-codex-workspace:local`）を使うので、どちらで作った
 イメージも共有できます（Dockerfile が同じであることはテストで確かめています）。
+コンテナに入れる道具（`rg`、`python` / `python3` と PyYAML）も同じです。版を上げてイメージの中身が変わったときは、
+`ensureImage({ maxAgeMs: 0 })` で作り直します（作り直すかどうかは、イメージの作成日時だけで決めるため）。
 
 ## 使い方
 
