@@ -1,6 +1,6 @@
 {
   "name": "@infodb/codex-workspace",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Run codex app-server in a container with only a workspace mounted (TypeScript)",
   "license": "MIT",
   "author": "tamuto",

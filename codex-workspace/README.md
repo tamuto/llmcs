@@ -21,7 +21,7 @@ uv の git 依存で、タグ（`codex-workspace-v<版>`）を指定して入れ
 dependencies = ["codex-workspace"]
 
 [tool.uv.sources]
-codex-workspace = { git = "https://github.com/tamuto/llmcs", subdirectory = "codex-workspace", tag = "codex-workspace-v0.3.0" }
+codex-workspace = { git = "https://github.com/tamuto/llmcs", subdirectory = "codex-workspace", tag = "codex-workspace-v0.3.1" }
 ```
 
 ```python
@@ -45,6 +45,11 @@ with WorkspaceSession(command, model="gpt-6.1-sol", effort="medium") as session:
   `status == "interrupted"` の結果を返す（例外にしない）。
 - イメージはパッケージに同梱した Dockerfile から作る。すぐ作り直すには `ensure_image(max_age=timedelta(0))`。
   自分で作るときは `with docker_context() as path:` でそのフォルダ（Dockerfile だけ）を得る。
+- コンテナには Codex が作業に使う道具として、`rg` と、`python` / `python3`（同じもの）と PyYAML を入れている。
+  YAML は `yaml.safe_load` で読み、変えたいところだけを変えて `yaml.safe_dump` で書ける。
+- 作り直すかどうかはイメージの作成日時だけで決める。版を上げてイメージの中身が変わったときは、
+  1日待たずに `ensure_image(max_age=timedelta(0))` で作り直す。イメージの名前は TypeScript 版や古い版と同じなので、
+  古い版のパッケージで作り直すと、道具も古い版のものに戻る。
 
 ## Sign in with ChatGPT（プラン利用）で動かす
 

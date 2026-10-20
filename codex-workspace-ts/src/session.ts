@@ -25,7 +25,7 @@ export const DEFAULT_IMAGE = "llmcs-codex-workspace:local";
 export const CONTAINER_WORKSPACE = "/workspace";
 export const CONTAINER_AUTH = "/codex/auth.json";
 const CLIENT_NAME = "codex_workspace";
-const CLIENT_VERSION = "0.2.0";
+const CLIENT_VERSION = "0.2.1";
 
 /** Sign in with ChatGPT の access token を app-server に渡す環境変数の既定の名前 */
 export const ACCESS_TOKEN_ENV = "ACCESS_TOKEN";

@@ -38,7 +38,7 @@ DEFAULT_IMAGE = "llmcs-codex-workspace:local"
 CONTAINER_WORKSPACE = "/workspace"
 CONTAINER_AUTH = "/codex/auth.json"
 CLIENT_NAME = "codex_workspace"
-CLIENT_VERSION = "0.3.0"
+CLIENT_VERSION = "0.3.1"
 
 ACCESS_TOKEN_ENV = "ACCESS_TOKEN"
 """Sign in with ChatGPT の access token を app-server に渡す環境変数の既定の名前。"""

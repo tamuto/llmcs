@@ -1,7 +1,9 @@
 import json
+import os
+import subprocess
 import sys
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ from codex_workspace import (
     chatgpt_plan_overrides,
     docker_command,
     docker_context,
+    ensure_image,
     parse_created,
 )
 
@@ -88,7 +91,7 @@ def test_既定ではパッケージの名前と版で名乗る(tmp_path, monkey
     with WorkspaceSession(FAKE):
         pass
     init = next(m for m in requests(log) if m.get("method") == "initialize")
-    assert init["params"]["clientInfo"] == {"name": "codex_workspace", "version": "0.3.0"}
+    assert init["params"]["clientInfo"] == {"name": "codex_workspace", "version": "0.3.1"}
 
 
 def test_プラン利用の使用量の上限もUsageLimitErrorにする(tmp_path, monkeypatch):
@@ -223,3 +226,42 @@ def test_同梱のDockerfileはDockerfileだけのフォルダにありTypeScrip
     if not ts.exists():
         pytest.skip("TypeScript 版が無い")
     assert dockerfile == ts.read_text()
+
+
+YAML_ROUND_TRIP = """
+import yaml
+value = {
+    "title": "日本語の題名: コロンと「引用」と 'quote' を含む",
+    "body": "1行目\\n2行目",
+    "date": "2026-10-20",
+    "year": "2026",
+    "looks_bool": "yes",
+    "items": [{"key": "a", "mentions": ["claude-code", "go"]}],
+}
+text = yaml.safe_dump(value, allow_unicode=True, sort_keys=False)
+assert yaml.safe_load(text) == value, text
+assert "日本語" in text
+print("ok")
+"""
+
+
+@pytest.mark.skipif(
+    os.environ.get("CODEX_WORKSPACE_IMAGE_TEST") != "1",
+    reason="実際にイメージを作る (CODEX_WORKSPACE_IMAGE_TEST=1 のときだけ。Docker と通信が要る)",
+)
+def test_イメージにはCodexが使う道具が入っている():
+    # 共有のイメージ (llmcs-codex-workspace:local) を差し替えないよう、別の名前で作る
+    image = "llmcs-codex-workspace:tools-test"
+    ensure_image(image, max_age=timedelta(0))
+
+    def run(*command: str) -> str:
+        result = subprocess.run(
+            ["docker", "run", "--rm", "--entrypoint", command[0], image, *command[1:]],
+            capture_output=True, text=True, check=False,
+        )  # fmt: skip
+        assert result.returncode == 0, result.stderr
+        return result.stdout
+
+    assert run("rg", "--version").startswith("ripgrep")
+    for python in ("python", "python3"):
+        assert run(python, "-c", YAML_ROUND_TRIP).strip() == "ok"
