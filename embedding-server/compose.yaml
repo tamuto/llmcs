@@ -2,7 +2,7 @@
 services:
   embedding-server:
     build:
-      context: .
+      context: src/embedding_server/docker
       args:
         TORCH_INDEX: ${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
         TORCH_VERSION: ${TORCH_VERSION:-2.14.1+cpu}

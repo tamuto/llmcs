@@ -4,7 +4,7 @@ LLM に関するクライアントとサーバをまとめるプロジェクト�
 
 | ディレクトリ | 内容 | 実行環境 |
 | --- | --- | --- |
-| `embedding-server/` | 文をベクトルにする HTTP サーバ（sentence-transformers、OpenAI 互換の `/v1/embeddings`） | Docker |
+| `embedding-server/` | 文をベクトルにする HTTP サーバ（sentence-transformers、OpenAI 互換の `/v1/embeddings`）と、使う間だけそれをコンテナで動かす部品 | Docker、Python 3.11 以上 |
 | `codex-workspace/` | `codex app-server` を、作業場所だけをマウントしたコンテナで動かし、ファイルを書かせる部品 | Docker、Python 3.11 以上 |
 | `codex-workspace-ts/` | `codex-workspace` の TypeScript 版（同じイメージを共有） | Docker、Node 22 以上 |
 | `chatgpt-plan-ts/` | Sign in with ChatGPT のプラン利用で、利用者の ChatGPT プランから Responses API を直接呼ぶ部品（`@infodb/chatgpt-plan`） | Node 22 以上 |
@@ -84,7 +84,34 @@ pnpm check   # 型検査・Lint（oxlint）・テスト・ビルド（dist/ は�
 
 ## 文をベクトルにする（embedding-server）
 
-初回の起動でモデル（合わせて約3.5GB）をボリュームへ取得するので、使えるようになるまで数分かかります。
+使う間だけ動かすときは、Python の部品で起動して、抜ければ止めて消します。イメージは同梱の Dockerfile から手元で作り
+（`llmcs-embedding-server:<パッケージの版>`）、モデルは名前付きボリューム（`llmcs-embedding-models`）に残します。
+呼ぶ側がコンテナの中にいるなら、そのコンテナがいる Docker のネットワークを `network` で渡します（渡さなければホストの
+`127.0.0.1` の空いたポートに公開します）。
+
+```toml
+[project]
+dependencies = ["embedding-server"]
+
+[tool.uv.sources]
+embedding-server = { git = "https://github.com/tamuto/llmcs", subdirectory = "embedding-server", tag = "embedding-server-v0.1.0" }
+```
+
+```python
+from embedding_server import ensure_image, running
+
+ensure_image()  # 無ければ作る
+with running(["bge-m3"], network="denv-cc-remote_default") as url:
+    ...  # url + "/v1/embeddings" を呼ぶ
+```
+
+```bash
+cd embedding-server
+uv run pytest -q
+uv run ruff check .
+```
+
+常駐させるときは compose で動かします。初回の起動でモデル（合わせて約3.5GB）をボリュームへ取得するので、使えるようになるまで数分かかります。
 
 ```bash
 cd embedding-server
