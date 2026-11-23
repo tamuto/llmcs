@@ -81,7 +81,7 @@ def test_ネットワークに入れて名前で呼び_抜けたら消す(docker
         name = run[run.index("--name") + 1]
         assert url == f"http://{name}:8080"
         assert run[run.index("--network") + 1] == "net"
-        assert "MODELS=bge-m3" in run and "llmcs-embedding-models:/models" in run
+        assert "MODELS=bge-m3" in run and "/mnt/usb/assets/llmcs/embedding-models:/models" in run
         assert "-p" not in run and "--rm" not in run
         assert calls()[-1][0] != "rm"
     assert probes == [url]
