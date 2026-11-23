@@ -130,19 +130,36 @@ TORCH_INDEX=https://download.pytorch.org/whl/cu128 TORCH_VERSION=2.14.1+cu128 do
 
 ## llama-server を CPU で動かす
 
-LLM（Qwen3.5-4B）と埋め込み（bge-m3）の2つを動かします。モデルは Hugging Face のコミットに固定して、
-ホストのフォルダ（既定 `/mnt/usb/assets/llmcs/llama-models`、NFS。`MODEL_DIR` で替えられる）へ取得します。
+LLM（Qwen3.5-4B、`llm`）と埋め込み（bge-m3、`embed`）を動かします。既定では `llm` だけを起動し、`embed` は
+`--profile embed` を付けたときだけ起動します。モデルは Hugging Face のコミットに固定して、ホストのフォルダ
+（既定 `/mnt/usb/assets/llmcs/llama-models`、NFS。`MODEL_DIR` で替えられる）へ取得します。既にあるファイルは取り直しません。
 
 ```bash
-docker run --rm --user root -v /mnt/usb/assets/llmcs/llama-models:/models curlimages/curl sh -c '
-  cd /models &&
-  curl -fL -o qwen3.5-4b-q4_k_m.gguf https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf &&
-  curl -fL -o bge-m3-q8_0.gguf https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF/resolve/9eba04c5d75ba5a1595e45de734d36bef4e5cb98/bge-m3-q8_0.gguf'
+docker run --rm --user root -v /mnt/usb/assets/llmcs/llama-models:/models curlimages/curl@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40 sh -c '
+  cd /models
+  get() { [ -s "$1" ] && echo "あり: $1" || { echo "取得: $1"; curl -fL --retry 3 -o "$1.part" "$2" && mv "$1.part" "$1"; }; }
+  get qwen3.5-4b-q4_k_m.gguf https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf
+  get bge-m3-q8_0.gguf https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF/resolve/9eba04c5d75ba5a1595e45de734d36bef4e5cb98/bge-m3-q8_0.gguf'
 
 cd llama-server
-docker compose -f compose.cpu.yaml up -d
+docker compose -f compose.cpu.yaml up -d                   # LLM だけ
+docker compose -f compose.cpu.yaml --profile embed up -d   # 埋め込みも
 curl http://127.0.0.1:8090/health   # LLM
 curl http://127.0.0.1:8091/health   # 埋め込み
 ```
+
+開発コンテナ（denv）と同じ Docker のネットワーク（既定 `denv-cc-remote_default`、`DENV_NETWORK` で替える）にも入るので、
+ほかのプロジェクトのコンテナからはコンテナ名で呼べます（`http://llmcs-llm:8080`、`http://llmcs-embed:8080`）。
+開発コンテナからは `localhost` では届きません。先にこのネットワークが無いと起動できません。
+
+| 変数 | 既定 | 意味 |
+|---|---|---|
+| `LLM_CTX` | `16384` | `-c`。全スロットの合計（`-np 2` なら1件あたり半分） |
+| `LLM_PARALLEL` | `2` | `-np`。同時に処理する数 |
+| `LLM_THREADS` | `6` | `-t` |
+| `LLM_PORT` / `EMBED_PORT` | `8090` / `8091` | ホストの 127.0.0.1 に公開するポート |
+| `EMBED_THREADS` | `2` | 埋め込みの `-t` |
+| `MODEL_DIR` | `/mnt/usb/assets/llmcs/llama-models` | モデルのフォルダ |
+| `DENV_NETWORK` | `denv-cc-remote_default` | 入る Docker のネットワーク |
 
 Jetson（aarch64 / JetPack）で GPU を使う構成は `llama-server/README.md` を参照してください。

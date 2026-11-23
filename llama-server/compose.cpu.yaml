@@ -1,28 +1,47 @@
-# GPU の無い x86_64 の PC で、llama-server を2つ動かす。抽出などに使う LLM と、文をベクトルにする埋め込み。
+# GPU の無い x86_64 の PC で、llama-server を動かす。抽出や会話に使う LLM (llm) と、文をベクトルにする埋め込み (embed)。
 # どちらも OpenAI と同じ形 (/v1/chat/completions、/v1/embeddings) で呼べる。
-# イメージは llama.cpp 公式の CPU 版をダイジェストで固定する。ホスト側は 127.0.0.1 にだけ公開する。
+# イメージは llama.cpp 公式の CPU 版をダイジェストで固定する。
+#
+#   docker compose -f compose.cpu.yaml up -d                   # LLM だけ
+#   docker compose -f compose.cpu.yaml --profile embed up -d   # 埋め込みも
+#
+# 開発コンテナ (denv) と同じ Docker のネットワークに入れ、ほかのプロジェクト (sumika など) からは
+# コンテナ名で呼ぶ (http://llmcs-llm:8080、http://llmcs-embed:8080)。ネットワークの名前は DENV_NETWORK で替える。
+# ホストのブラウザ・curl 用に 127.0.0.1 にも公開する。
 #
 # モデルはホストのフォルダ (既定 /mnt/usb/assets/llmcs/llama-models、NFS) に置く (取り方は README)。
 # WSL の仮想ディスクを使わないため。MODEL_DIR で替えられる。
 # 2026-10-03 に Qwen3.5-4B (Q4_K_M) を 8 コアの CPU で動かしたところ、
 # 読むのが毎秒約38〜55トークン、書くのが毎秒約10〜15トークンだった。
+x-llama: &llama
+  image: ghcr.io/ggml-org/llama.cpp@sha256:970168341efef973da5666ea5c362fa428ee66ba0dfa621b0f69bf3feb3320f7
+  restart: unless-stopped
+  volumes:
+    - ${MODEL_DIR:-/mnt/usb/assets/llmcs/llama-models}:/models:ro
+  networks: [default, denv]
+
 services:
   llm:
-    image: ghcr.io/ggml-org/llama.cpp@sha256:970168341efef973da5666ea5c362fa428ee66ba0dfa621b0f69bf3feb3320f7
+    <<: *llama
+    container_name: llmcs-llm
+    # -c は全スロットの合計。-np 2 なら1件あたり LLM_CTX の半分になる。
     command: >-
       -m /models/qwen3.5-4b-q4_k_m.gguf --alias qwen3.5-4b
-      -c 16384 -np 1 -t 6 --jinja --reasoning off
+      -c ${LLM_CTX:-16384} -np ${LLM_PARALLEL:-2} -t ${LLM_THREADS:-6} --jinja --reasoning off
       --host 0.0.0.0 --port 8080
     ports:
       - "127.0.0.1:${LLM_PORT:-8090}:8080"
-    volumes:
-      - ${MODEL_DIR:-/mnt/usb/assets/llmcs/llama-models}:/models:ro
   embed:
-    image: ghcr.io/ggml-org/llama.cpp@sha256:970168341efef973da5666ea5c362fa428ee66ba0dfa621b0f69bf3feb3320f7
+    <<: *llama
+    profiles: [embed]
+    container_name: llmcs-embed
     command: >-
       -m /models/bge-m3-q8_0.gguf --alias bge-m3 --embedding --pooling cls
-      -c 8192 -ub 8192 -t 2 --host 0.0.0.0 --port 8080
+      -c 8192 -ub 8192 -t ${EMBED_THREADS:-2} --host 0.0.0.0 --port 8080
     ports:
       - "127.0.0.1:${EMBED_PORT:-8091}:8080"
-    volumes:
-      - ${MODEL_DIR:-/mnt/usb/assets/llmcs/llama-models}:/models:ro
+
+networks:
+  denv:
+    external: true
+    name: ${DENV_NETWORK:-denv-cc-remote_default}
