@@ -1,0 +1,67 @@
+name: llmcs
+description: 複数のプロジェクトから使う LLM まわりの部品集。フォルダごとに独立したパッケージ・構成として提供する (Codex のクライアントとコンテナ、ChatGPT プランのサインイン、文のベクトル化サーバ、llama-server)
+repos:
+  llmcs:
+    role: 本体
+    readFirst: true
+    writable: true
+    map:
+      README.md: ドキュメント (各部品の使い方と、使う側の依存の書き方)
+      codex-app-server-client: Codex app-server のクライアント (Python。uv の git 依存で minamo・shexa が使う)
+      codex-workspace: Codex を作業場所だけマウントしたコンテナで動かす (Python。minamo/kotonoha が使う。イメージ llmcs-codex-workspace:local)
+      codex-workspace-ts: codex-workspace の TypeScript 版 (npm の @infodb/codex-workspace。p3 が使う)
+      chatgpt-plan-ts: ChatGPT プランのサインインと Responses API (npm の @infodb/chatgpt-plan。p3・bluenix/slim3・veilstorm/scenaria が使う)
+      embedding-server: 文をベクトルにするサーバと、使う間だけ起動する部品 (Python。minamo/kumu が使う。モデルは /mnt/usb/assets/llmcs/embedding-models)
+      llama-server: llama.cpp の LLM と埋め込み (compose.cpu.yaml は llmcs-llm・llmcs-embed として denv のネットワークで共有。bluenix/sumika が呼ぶ)
+  bluenix:
+    role: 使う側 (VRM のアプリ群)。sumika が llama-server (CPU 版) の LLM を、slim3 が @infodb/chatgpt-plan を使う
+    map:
+      sumika/sumika.config.json: { role: llama-server の呼び先 (llm.url・model・concurrency) }
+      sumika/llm: sumika が持っていた llama-server の compose とモデルの取得 (llmcs の compose.cpu.yaml に寄せる前のもの)
+      sumika/README.md: ローカル LLM の節 (起動のしかた・モデル・ポート)
+      docs/system.md: sumika の構成 (llama-server の置き方)
+      slim3/packages/agent: { role: "@infodb/chatgpt-plan を使う部品 (package.json の版の範囲)", entry: slim3/packages/agent/src/chatgpt.ts }
+      slim3/docs/chatgpt.md: slim3 の ChatGPT の使い方
+  minamo:
+    role: 使う側 (データの取得と分析)。kumu が embedding-server と codex-app-server-client を、kotonoha が codex-workspace と codex-app-server-client を uv の git タグで使う
+    map:
+      kumu/pyproject.toml: kumu の依存のタグ (embedding-server・codex-app-server-client)
+      kumu/src/kumu/embeddings.py: { role: embedding-server の running() を呼ぶところ (既定のモデルの置き場所・ネットワーク) }
+      kumu/src/kumu/research.py: codex-app-server-client を使うところ
+      kotonoha/pyproject.toml: kotonoha の依存のタグ (codex-workspace・codex-app-server-client)
+      kotonoha/src/kotonoha/kg/agent.py: { role: codex-workspace でコンテナの Codex を動かすところ }
+      kotonoha/src/kotonoha/codex_llm.py: codex-app-server-client を使うところ
+      uv.lock: 固定した llmcs のコミット
+      docs/feeds.md: embedding-server の使い方 (起動・モデルの置き場所)
+      README.md: llmcs の部品とイメージ (llmcs-codex-workspace:local) の説明
+  shexa:
+    role: 使う側。tools/datagen が codex-app-server-client を uv の git タグで使う
+    map:
+      tools/datagen/pyproject.toml: datagen の依存のタグ
+      tools/datagen/src/shexa_datagen/backends/codex.py: { role: codex-app-server-client を使うところ }
+      uv.lock: 固定した llmcs のコミット
+  p3:
+    role: 使う側 (開発の記録のツール)。@infodb/codex-workspace (Preflight・レビューの Codex) と @infodb/chatgpt-plan (サインイン) を npm の版の範囲で使う
+    map:
+      package.json: 依存の版の範囲 (packages/p3・packages/tasks の package.json も同じ)
+      packages/tasks/src/core/preflight/codexEngine.ts: { role: "@infodb/codex-workspace でコンテナの Codex を動かすところ" }
+      packages/tasks/src/core/preflight/codexImage.ts: Codex のイメージ (llmcs-codex-workspace:local) の作り直し
+      packages/tasks/src/core/chatgpt.ts: "@infodb/chatgpt-plan を使うところ"
+      docs/architecture.md: 「llmcs の部品の依存」の節 (公開版で使う決まり・手元の llmcs で試す手順)
+      docs/chatgpt-sign-in.md: サインインの設計と llmcs に足したもの
+      test/package.test.ts: llmcs の部品を公開版の範囲で指定していることの検査
+  veilstorm:
+    role: 使う側。scenaria が @infodb/chatgpt-plan を npm の版の範囲で使う
+    map:
+      scenaria/package.json: 依存の版の範囲
+      scenaria/server/routes/chatgpt.ts: { role: "@infodb/chatgpt-plan のサインインを使うところ" }
+      scenaria/server/routes/chat.ts: Responses API を呼ぶところ
+branchPattern: req/{id}-{slug}
+preflight:
+  runner: codex
+  instructions: >-
+    llmcs の各フォルダは、ほかのリポジトリ (bluenix・minamo・shexa・p3・veilstorm) から版を固定して使われている。
+    変更を評価するときは、変えるフォルダを使っている参照先を map から探し、呼び方・既定値・パス・イメージ名・コンテナ名が
+    変わって壊れないか、使う側で版 (uv の git タグ、npm の版の範囲) を上げる作業が要るかを必ずリスクとタスク案に挙げる。
+    Python のパッケージは版を上げて `<フォルダ>-v<版>` のタグを付け、TypeScript のパッケージ (-ts) は npm に公開してから使う側の
+    版の範囲を上げる。参照先は読むだけで、使う側の修正はそれぞれのプロジェクトで行う。
