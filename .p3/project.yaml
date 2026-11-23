@@ -16,8 +16,7 @@ repos:
   bluenix:
     role: 使う側 (VRM のアプリ群)。sumika が llama-server (CPU 版) の LLM を、slim3 が @infodb/chatgpt-plan を使う
     map:
-      sumika/sumika.config.json: { role: llama-server の呼び先 (llm.url・model・concurrency) }
-      sumika/llm: sumika が持っていた llama-server の compose とモデルの取得 (llmcs の compose.cpu.yaml に寄せる前のもの)
+      sumika/sumika.config.json: { role: llama-server の呼び先 (llm.url = http://llmcs-llm:8080・model・concurrency) }
       sumika/README.md: ローカル LLM の節 (起動のしかた・モデル・ポート)
       docs/system.md: sumika の構成 (llama-server の置き方)
       slim3/packages/agent: { role: "@infodb/chatgpt-plan を使う部品 (package.json の版の範囲)", entry: slim3/packages/agent/src/chatgpt.ts }
