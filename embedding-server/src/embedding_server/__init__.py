@@ -12,8 +12,9 @@
 - イメージはパッケージに同梱した Dockerfile から作り、パッケージの版をタグにする
   (`llmcs-embedding-server:<版>`)。models.json (モデルの版の固定) を変えたら版を上げるので、
   古いイメージを使い続けることは無い。
-- モデルは名前付きボリューム (既定 `llmcs-embedding-models`) に置き、起動のたびに取り直さない。
-  初回だけ取得を待つ。
+- モデルはホストのフォルダ (既定 `/mnt/usb/assets/llmcs/embedding-models`、NFS) に置き、起動のたびに
+  取り直さない。WSL の仮想ディスクを使わないため。初回だけ取得を待つ。`volume` に名前付きボリュームを
+  渡してもよい (docker run -v にそのまま渡す)。
 - 呼ぶ側がコンテナの中にいるなら、そのコンテナがいる Docker のネットワークを `network` で渡す。
   サーバはそのネットワークにコンテナ名で入り、`http://<名前>:8080` で届く。渡さなければホストの
   127.0.0.1 の空いたポートに公開する (呼ぶ側がホストにいるとき)。
@@ -40,7 +41,8 @@ except metadata.PackageNotFoundError:  # pragma: no cover - 入れずに読ん�
     __version__ = "0.0.0"
 
 DEFAULT_IMAGE = f"llmcs-embedding-server:{__version__}"
-DEFAULT_VOLUME = "llmcs-embedding-models"
+DEFAULT_VOLUME = "/mnt/usb/assets/llmcs/embedding-models"
+"""docker run -v の左側。Docker のホストから見たパス (呼ぶ側がコンテナの中にいても)。"""
 PORT = 8080
 START_TIMEOUT = 900.0
 """初回はモデルの取得 (bge-m3 で約2GB) を待つ。2回目からは読み込みだけ。"""

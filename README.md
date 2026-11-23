@@ -85,7 +85,8 @@ pnpm check   # 型検査・Lint（oxlint）・テスト・ビルド（dist/ は�
 ## 文をベクトルにする（embedding-server）
 
 使う間だけ動かすときは、Python の部品で起動して、抜ければ止めて消します。イメージは同梱の Dockerfile から手元で作り
-（`llmcs-embedding-server:<パッケージの版>`）、モデルは名前付きボリューム（`llmcs-embedding-models`）に残します。
+（`llmcs-embedding-server:<パッケージの版>`）、モデルはホストのフォルダ（既定 `/mnt/usb/assets/llmcs/embedding-models`、NFS）に残します。WSL の仮想ディスクを
+使わないためです。別の場所にするときは `running(volume=...)`（compose は `MODELS_DIR`）で替えます。
 呼ぶ側がコンテナの中にいるなら、そのコンテナがいる Docker のネットワークを `network` で渡します（渡さなければホストの
 `127.0.0.1` の空いたポートに公開します）。
 
@@ -94,7 +95,7 @@ pnpm check   # 型検査・Lint（oxlint）・テスト・ビルド（dist/ は�
 dependencies = ["embedding-server"]
 
 [tool.uv.sources]
-embedding-server = { git = "https://github.com/tamuto/llmcs", subdirectory = "embedding-server", tag = "embedding-server-v0.1.0" }
+embedding-server = { git = "https://github.com/tamuto/llmcs", subdirectory = "embedding-server", tag = "embedding-server-v0.1.1" }
 ```
 
 ```python
@@ -111,7 +112,7 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-常駐させるときは compose で動かします。初回の起動でモデル（合わせて約3.5GB）をボリュームへ取得するので、使えるようになるまで数分かかります。
+常駐させるときは compose で動かします。初回の起動でモデル（合わせて約3.5GB）を上のフォルダへ取得するので、使えるようになるまで数分かかります。
 
 ```bash
 cd embedding-server
@@ -130,11 +131,10 @@ TORCH_INDEX=https://download.pytorch.org/whl/cu128 TORCH_VERSION=2.14.1+cu128 do
 ## llama-server を CPU で動かす
 
 LLM（Qwen3.5-4B）と埋め込み（bge-m3）の2つを動かします。モデルは Hugging Face のコミットに固定して、
-名前付きボリュームへ取得します。
+ホストのフォルダ（既定 `/mnt/usb/assets/llmcs/llama-models`、NFS。`MODEL_DIR` で替えられる）へ取得します。
 
 ```bash
-docker volume create llmcs_llama_models
-docker run --rm --user root -v llmcs_llama_models:/models curlimages/curl sh -c '
+docker run --rm --user root -v /mnt/usb/assets/llmcs/llama-models:/models curlimages/curl sh -c '
   cd /models &&
   curl -fL -o qwen3.5-4b-q4_k_m.gguf https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf &&
   curl -fL -o bge-m3-q8_0.gguf https://huggingface.co/ggml-org/bge-m3-Q8_0-GGUF/resolve/9eba04c5d75ba5a1595e45de734d36bef4e5cb98/bge-m3-q8_0.gguf'
